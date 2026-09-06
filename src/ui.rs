@@ -353,7 +353,16 @@ pub fn draw(f: &mut Frame, app: &App) {
         columns
             .iter()
             .zip(column_widths.iter())
-            .map(|(column, width)| fit_cell(column.label(), *width))
+            .map(|(column, width)| {
+                fit_cell(
+                    if *column == DisplayColumn::Pid {
+                        "# | PID"
+                    } else {
+                        column.label()
+                    },
+                    *width,
+                )
+            })
             .collect::<Vec<_>>(),
     )
     .style(Style::default().add_modifier(Modifier::BOLD));
@@ -371,7 +380,9 @@ pub fn draw(f: &mut Frame, app: &App) {
                 .iter()
                 .zip(column_widths.iter())
                 .map(|(column, width)| match (*column, *width) {
-                    (DisplayColumn::Pid, width) => fit_cell(&process.pid, width),
+                    (DisplayColumn::Pid, width) => {
+                        fit_cell(&format!("{:>4} | {}", index + 1, process.pid), width)
+                    }
                     (DisplayColumn::Name, width) => fit_cell(
                         &format!("{}{}", app.tree_prefix(process), process.name),
                         width,
@@ -698,10 +709,8 @@ fn format_usage_bar(percent: u16, width: usize) -> String {
 
 fn column_min_width(column: DisplayColumn) -> u16 {
     match column {
-        DisplayColumn::Pid
-        | DisplayColumn::Uid
-        | DisplayColumn::Parent
-        | DisplayColumn::ParentUid => 6,
+        DisplayColumn::Pid => 12,
+        DisplayColumn::Uid | DisplayColumn::Parent | DisplayColumn::ParentUid => 6,
         DisplayColumn::Cpu => 7,
         DisplayColumn::Threads => 8,
         DisplayColumn::Status => 8,

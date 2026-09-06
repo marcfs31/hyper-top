@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.8.2] - 2026-09-06
+### Changed
+- Added a clearly separated process number beside each PID in the Processes table.
+- Bumped the package version to `0.8.2`.
+
 ## [0.8.1] - 2026-09-06
 ### Added
 - Hierarchical process tree mode toggled with `e`, with parent-first navigation and visual indentation.
