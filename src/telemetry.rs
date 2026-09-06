@@ -100,7 +100,7 @@ pub fn spawn_telemetry_engine(
                     let parent_uid = parent
                         .and_then(|process| process.user_id())
                         .map(|user_id| user_id.to_string())
-                        .unwrap_or_else(|| "?".to_string());
+                        .unwrap_or_else(|| "N/A".to_string());
                     let parent_user = parent
                         .and_then(|process| process.user_id())
                         .and_then(|user_id| users.get_user_by_id(user_id))

@@ -1,6 +1,7 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     fs, io,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -646,6 +647,7 @@ pub struct App {
     pub config_path: Option<PathBuf>,
     pub focused_pid: Option<u32>,
     pub expanded_process_view: bool,
+    pub tree_view: bool,
     pub help_scroll: usize,
 }
 
@@ -690,6 +692,7 @@ impl App {
             config_path: None,
             focused_pid: None,
             expanded_process_view: false,
+            tree_view: false,
             help_scroll: 0,
         }
     }
@@ -794,14 +797,75 @@ impl App {
                     let focused = processes.remove(focused_index);
                     processes.truncate(limit.saturating_sub(1));
                     processes.push(focused);
-                    return processes;
                 }
             }
         }
         if limit != 0 {
             processes.truncate(limit);
         }
+        if self.tree_view {
+            processes = self.tree_order(processes);
+        }
         processes
+    }
+
+    fn tree_order<'a>(&self, processes: Vec<&'a ProcessItem>) -> Vec<&'a ProcessItem> {
+        let ids: HashSet<u32> = processes
+            .iter()
+            .filter_map(|process| process.pid.parse().ok())
+            .collect();
+        let mut children: HashMap<u32, Vec<&ProcessItem>> = HashMap::new();
+        let mut roots = Vec::new();
+        for process in processes {
+            if let Ok(pid) = process.pid.parse::<u32>() {
+                if ids.contains(&process.parent_pid) {
+                    children
+                        .entry(process.parent_pid)
+                        .or_default()
+                        .push(process);
+                } else {
+                    roots.push(process);
+                }
+                if pid == process.parent_pid {
+                    roots.push(process);
+                }
+            } else {
+                roots.push(process);
+            }
+        }
+
+        let mut ordered = Vec::new();
+        let mut visited = HashSet::new();
+        for root in roots {
+            append_tree_node(root, &children, &mut visited, &mut ordered);
+        }
+        ordered
+    }
+
+    pub fn tree_prefix(&self, process: &ProcessItem) -> String {
+        if !self.tree_view {
+            return String::new();
+        }
+        let mut depth: usize = 0;
+        let mut parent_pid = process.parent_pid;
+        let mut visited = HashSet::new();
+        while parent_pid != 0 && depth < 8 && visited.insert(parent_pid) {
+            let Some(parent) = self
+                .system_state
+                .processes
+                .iter()
+                .find(|candidate| candidate.pid.parse::<u32>().ok() == Some(parent_pid))
+            else {
+                break;
+            };
+            depth += 1;
+            parent_pid = parent.parent_pid;
+        }
+        if depth == 0 {
+            String::new()
+        } else {
+            format!("{}|- ", "  ".repeat(depth.saturating_sub(1)))
+        }
     }
 
     pub fn selected_process_info(&self) -> Option<&ProcessItem> {
@@ -1012,6 +1076,11 @@ impl App {
         self.expanded_process_view = !self.expanded_process_view;
     }
 
+    pub fn toggle_tree_view(&mut self) {
+        self.tree_view = !self.tree_view;
+        self.selected_process = 0;
+    }
+
     pub fn cycle_theme(&mut self) {
         self.config.theme = match self.config.theme {
             Theme::Default => Theme::Solarized,
@@ -1022,6 +1091,27 @@ impl App {
 
     pub fn status(&self) -> &str {
         &self.system_state.message
+    }
+}
+
+fn append_tree_node<'a>(
+    process: &'a ProcessItem,
+    children: &HashMap<u32, Vec<&'a ProcessItem>>,
+    visited: &mut HashSet<u32>,
+    ordered: &mut Vec<&'a ProcessItem>,
+) {
+    let Ok(pid) = process.pid.parse::<u32>() else {
+        ordered.push(process);
+        return;
+    };
+    if !visited.insert(pid) {
+        return;
+    }
+    ordered.push(process);
+    if let Some(descendants) = children.get(&pid) {
+        for child in descendants {
+            append_tree_node(child, children, visited, ordered);
+        }
     }
 }
 
@@ -1151,6 +1241,28 @@ mod tests {
         app.selected_process = 5;
         app.move_selection(1);
         assert_eq!(app.selected_process, 2);
+    }
+
+    #[test]
+    fn tree_view_orders_parent_before_children() {
+        let mut app = App::new();
+        let mut root = process("1", "root", 1.0, 10, 1);
+        root.parent_pid = 0;
+        let mut child = process("2", "child", 2.0, 10, 1);
+        child.parent_pid = 1;
+        let mut grandchild = process("3", "grandchild", 3.0, 10, 1);
+        grandchild.parent_pid = 2;
+        app.system_state.processes = vec![grandchild, root, child];
+        app.toggle_tree_view();
+
+        let names: Vec<_> = app
+            .visible_processes()
+            .iter()
+            .map(|process| process.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["root", "child", "grandchild"]);
+        assert_eq!(app.tree_prefix(app.visible_processes()[1]), "|- ");
+        assert_eq!(app.tree_prefix(app.visible_processes()[2]), "  |- ");
     }
 
     #[test]

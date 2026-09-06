@@ -384,7 +384,7 @@ pub fn draw(f: &mut Frame, app: &App) {
                 .iter()
                 .map(|column| match column {
                     DisplayColumn::Pid => process.pid.clone(),
-                    DisplayColumn::Name => process.name.clone(),
+                    DisplayColumn::Name => format!("{}{}", app.tree_prefix(process), process.name),
                     DisplayColumn::User => process.user.clone(),
                     DisplayColumn::Uid => process.uid.clone(),
                     DisplayColumn::Cpu => format!("{:.1}%", process.cpu),
@@ -433,7 +433,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         format!("limit:{}", app.config.max_processes)
     };
     let table_title = format!(
-        " Processes ({})  {}{} sort:{}  {} ",
+        " Processes ({})  {}{}{} sort:{}  {} ",
         app.visible_processes().len(),
         limit_label,
         if app.expanded_process_view {
@@ -441,6 +441,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         } else {
             ""
         },
+        if app.tree_view { "  TREE" } else { "" },
         sort_name(app.sort_mode),
         if app.query.is_empty() {
             "all"
@@ -499,6 +500,12 @@ pub fn draw(f: &mut Frame, app: &App) {
             " expanded view  "
         } else {
             " normal view  "
+        }),
+        Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(if app.tree_view {
+            " process tree  "
+        } else {
+            " flat process list  "
         }),
         Span::styled("s", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" sort / 0 clear  "),
@@ -732,6 +739,7 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("[ / ], -/+, or { }  Decrease/increase process limit by 10"),
         Line::from("u                 Cycle limit: unlimited / 50 / 80 / 150"),
         Line::from("v / V             Toggle full-screen Processes + Details telemetry view"),
+        Line::from("e                 Toggle hierarchical process tree view"),
         Line::from("Home / End         Jump to first / last process"),
         Line::from("PageUp / PageDown   Move by one page of processes"),
         Line::from("1-6               Apply quick filter presets"),
@@ -741,6 +749,7 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("Space             Pause/resume all telemetry updates (not one process)"),
         Line::from("q                 Quit; Esc closes dialogs"),
     ])
+    .scroll((app.help_scroll.min(u16::MAX as usize) as u16, 0))
     .wrap(Wrap { trim: true })
     .block(
         Block::default()

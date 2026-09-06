@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.8.1] - 2026-09-06
+### Added
+- Hierarchical process tree mode toggled with `e`, with parent-first navigation and visual indentation.
+
+### Fixed
+- Replaced ambiguous unavailable parent UID values with `N/A`.
+- Help dialog navigation now visibly scrolls with Up/Down, PageUp/PageDown, Home, and End.
+
 ## [0.8.0] - 2026-09-06
 ### Added
 - Dedicated input handling module with focused shortcut and interaction tests.

@@ -133,6 +133,7 @@ pub async fn handle_key(
         }
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'u') => app.cycle_process_limit(),
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'v') => app.toggle_expanded_process_view(),
+        KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'e') => app.toggle_tree_view(),
         KeyCode::PageUp => app.move_selection(-10),
         KeyCode::PageDown => app.move_selection(10),
         KeyCode::Home => app.selected_process = 0,
@@ -208,5 +209,16 @@ mod tests {
         assert_eq!(app.config.max_processes, 90);
         handle_key(&mut app, KeyCode::Char('u'), KeyModifiers::NONE, &tx).await;
         assert_eq!(app.config.max_processes, 0);
+    }
+
+    #[tokio::test]
+    async fn e_toggles_process_tree_view() {
+        let mut app = App::with_config(AppConfig::default());
+        let tx = channel();
+
+        handle_key(&mut app, KeyCode::Char('e'), KeyModifiers::NONE, &tx).await;
+        assert!(app.tree_view);
+        handle_key(&mut app, KeyCode::Char('E'), KeyModifiers::SHIFT, &tx).await;
+        assert!(!app.tree_view);
     }
 }
