@@ -2,7 +2,7 @@ mod app;
 mod telemetry;
 mod ui;
 
-use app::{App, AppConfig, InputMode, SortMode};
+use app::{App, InputMode, SortMode};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -15,13 +15,20 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut app = match App::from_cli_args(std::env::args().skip(1)) {
+        Ok(app) => app,
+        Err(error) => {
+            eprintln!("Failed to parse CLI arguments: {error}");
+            std::process::exit(1);
+        }
+    };
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::with_config(AppConfig::default());
     let (tx, mut rx) = mpsc::channel(10);
     let (command_tx, command_rx) = mpsc::channel(10);
     telemetry::spawn_telemetry_engine(
@@ -46,6 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 handle_key(&mut app, key.code, key.modifiers, &command_tx).await;
             }
         }
+    }
+
+    if let Some(path) = app.config_path.clone() {
+        let _ = app.save_config(path);
     }
 
     disable_raw_mode()?;

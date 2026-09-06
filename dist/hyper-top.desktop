@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=hyper-top
+Comment=Live system monitor and process dashboard
+Exec=/usr/bin/env bash -lc 'hyper-top'
+Icon=utilities-terminal
+Terminal=true
+Categories=System;Monitor;Utility;
+StartupNotify=true

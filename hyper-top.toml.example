@@ -1,0 +1,22 @@
+refresh_interval_ms = 900
+max_processes = 80
+theme = "midnight"
+show_full_command = true
+
+visible_columns = ["pid", "name", "cpu", "memory", "threads"]
+
+[[filter_presets]]
+name = "postgres"
+query = "postgres"
+
+[[filter_presets]]
+name = "all"
+query = ""
+
+[[sort_profiles]]
+name = "CPU"
+sort_mode = "cpu"
+
+[[sort_profiles]]
+name = "Memory"
+sort_mode = "memory"

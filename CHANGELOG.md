@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.6.0] - 2026-09-06
+### Added
+- Installation and launcher support for running the app as a terminal command or desktop launch entry.
+- Sample config file and local developer runner scripts for easier setup and reuse.
+- Project documentation covering installation, customization, and quick-start usage.
+
+### Changed
+- Expanded the project’s operational readiness for local installs and repeated usage.
+- Bumped the package version to `0.6.0` to reflect the installability and developer experience milestone.
+
 ## [0.5.0] - 2026-09-06
 ### Added
 - Configuration-driven flexibility for telemetry refresh cadence, view density, and theme selection.

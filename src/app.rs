@@ -1,6 +1,12 @@
-use std::time::{Duration, Instant};
+use ratatui::style::Color;
+use serde::{Deserialize, Serialize};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum FocusedBlock {
     CommandPalette,
     CpuRam,
@@ -8,7 +14,8 @@ pub enum FocusedBlock {
     ProcessDetails,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SortMode {
     Cpu,
     Memory,
@@ -17,7 +24,7 @@ pub enum SortMode {
     Threads,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum InputMode {
     Normal,
     Search,
@@ -25,19 +32,147 @@ pub enum InputMode {
     Help,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Theme {
     Default,
     Solarized,
     Midnight,
 }
 
+impl Theme {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Default => "DEFAULT",
+            Self::Solarized => "SOLARIZED",
+            Self::Midnight => "MIDNIGHT",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "default" => Some(Self::Default),
+            "solarized" => Some(Self::Solarized),
+            "midnight" => Some(Self::Midnight),
+            _ => None,
+        }
+    }
+
+    pub fn palette(self) -> ThemePalette {
+        match self {
+            Self::Default => ThemePalette {
+                accent: Color::Cyan,
+                muted: Color::DarkGray,
+                success: Color::LightGreen,
+                warning: Color::Yellow,
+                memory: Color::LightMagenta,
+                text: Color::White,
+                selection_fg: Color::Black,
+                selection_bg: Color::Cyan,
+                footer: Color::Yellow,
+            },
+            Self::Solarized => ThemePalette {
+                accent: Color::LightBlue,
+                muted: Color::DarkGray,
+                success: Color::Green,
+                warning: Color::Yellow,
+                memory: Color::Magenta,
+                text: Color::White,
+                selection_fg: Color::Black,
+                selection_bg: Color::LightBlue,
+                footer: Color::LightYellow,
+            },
+            Self::Midnight => ThemePalette {
+                accent: Color::LightCyan,
+                muted: Color::Gray,
+                success: Color::Green,
+                warning: Color::LightRed,
+                memory: Color::Magenta,
+                text: Color::White,
+                selection_fg: Color::Black,
+                selection_bg: Color::LightCyan,
+                footer: Color::LightRed,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ThemePalette {
+    pub accent: Color,
+    pub muted: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub memory: Color,
+    pub text: Color,
+    pub selection_fg: Color,
+    pub selection_bg: Color,
+    pub footer: Color,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DisplayColumn {
+    Pid,
+    Name,
+    Cpu,
+    Memory,
+    Threads,
+    Status,
+    Command,
+}
+
+impl DisplayColumn {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pid => "PID",
+            Self::Name => "NAME",
+            Self::Cpu => "CPU",
+            Self::Memory => "MEMORY",
+            Self::Threads => "THREADS",
+            Self::Status => "STATUS",
+            Self::Command => "COMMAND",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "pid" => Some(Self::Pid),
+            "name" => Some(Self::Name),
+            "cpu" => Some(Self::Cpu),
+            "memory" => Some(Self::Memory),
+            "threads" => Some(Self::Threads),
+            "status" => Some(Self::Status),
+            "command" => Some(Self::Command),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct FilterPreset {
+    pub name: String,
+    pub query: String,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SortProfile {
+    pub name: String,
+    pub sort_mode: SortMode,
+}
+
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct AppConfig {
     pub refresh_interval_ms: u64,
     pub max_processes: usize,
     pub theme: Theme,
     pub show_full_command: bool,
+    #[serde(default)]
+    pub visible_columns: Vec<DisplayColumn>,
+    #[serde(default)]
+    pub filter_presets: Vec<FilterPreset>,
+    #[serde(default)]
+    pub sort_profiles: Vec<SortProfile>,
 }
 
 impl Default for AppConfig {
@@ -47,17 +182,264 @@ impl Default for AppConfig {
             max_processes: 80,
             theme: Theme::Default,
             show_full_command: true,
+            visible_columns: Self::default_visible_columns(),
+            filter_presets: Vec::new(),
+            sort_profiles: Self::default_sort_profiles(),
         }
     }
 }
 
 impl AppConfig {
-    pub fn theme_name(&self) -> &'static str {
-        match self.theme {
-            Theme::Default => "DEFAULT",
-            Theme::Solarized => "SOLARIZED",
-            Theme::Midnight => "MIDNIGHT",
+    pub fn default_visible_columns() -> Vec<DisplayColumn> {
+        vec![
+            DisplayColumn::Pid,
+            DisplayColumn::Name,
+            DisplayColumn::Cpu,
+            DisplayColumn::Memory,
+        ]
+    }
+
+    pub fn default_sort_profiles() -> Vec<SortProfile> {
+        vec![
+            SortProfile {
+                name: "CPU".to_string(),
+                sort_mode: SortMode::Cpu,
+            },
+            SortProfile {
+                name: "Memory".to_string(),
+                sort_mode: SortMode::Memory,
+            },
+            SortProfile {
+                name: "Name".to_string(),
+                sort_mode: SortMode::Name,
+            },
+            SortProfile {
+                name: "PID".to_string(),
+                sort_mode: SortMode::Pid,
+            },
+            SortProfile {
+                name: "Threads".to_string(),
+                sort_mode: SortMode::Threads,
+            },
+        ]
+    }
+
+    fn apply_defaults(&mut self) {
+        if self.visible_columns.is_empty() {
+            self.visible_columns = Self::default_visible_columns();
         }
+        if self.sort_profiles.is_empty() {
+            self.sort_profiles = Self::default_sort_profiles();
+        }
+        self.refresh_interval_ms = self.refresh_interval_ms.clamp(250, 2500).max(250).min(2500);
+        self.max_processes = self.max_processes.max(10).min(250);
+    }
+
+    pub fn theme_name(&self) -> &'static str {
+        self.theme.name()
+    }
+
+    pub fn load_from_file(path: impl AsRef<Path>) -> io::Result<Self> {
+        let path = path.as_ref();
+        match fs::read_to_string(path) {
+            Ok(contents) => {
+                let mut config: Self = serde_json::from_str(&contents)
+                    .or_else(|_| toml::from_str(&contents))
+                    .map_err(|error| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("invalid config: {error}"),
+                        )
+                    })?;
+                config.apply_defaults();
+                Ok(config)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
+        Self::load_from_file(path)
+    }
+
+    pub fn save_to_file(&self, path: impl AsRef<Path>) -> io::Result<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let serialize = |value: &Self| -> io::Result<String> {
+            let ext = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("json")
+                .to_ascii_lowercase();
+            match ext.as_str() {
+                "toml" => toml::to_string_pretty(value)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string())),
+                _ => serde_json::to_string_pretty(value)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string())),
+            }
+        };
+        let data = serialize(self)?;
+        fs::write(path, data)
+    }
+
+    pub fn save(&self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.save_to_file(path)
+    }
+
+    #[allow(dead_code)]
+    pub fn from_cli_args<I, S>(args: I) -> Result<Self, String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let options = CliOptions::parse(args)?;
+        let mut config = match options.config_path.as_ref() {
+            Some(path) => Self::load_from_file(path).unwrap_or_else(|_| Self::default()),
+            None => Self::default(),
+        };
+        if let Some(theme) = options.theme {
+            config.theme = theme;
+        }
+        if let Some(refresh_interval_ms) = options.refresh_interval_ms {
+            config.refresh_interval_ms = refresh_interval_ms;
+        }
+        if let Some(max_processes) = options.max_processes {
+            config.max_processes = max_processes;
+        }
+        if let Some(show_full_command) = options.show_full_command {
+            config.show_full_command = show_full_command;
+        }
+        config.apply_defaults();
+        Ok(config)
+    }
+
+    pub fn set_visible_columns(&mut self, columns: Vec<DisplayColumn>) {
+        let mut unique = Vec::new();
+        for column in columns {
+            if !unique.contains(&column) {
+                unique.push(column);
+            }
+        }
+        self.visible_columns = if unique.is_empty() {
+            Self::default_visible_columns()
+        } else {
+            unique
+        };
+    }
+
+    pub fn toggle_column(&mut self, column: DisplayColumn) {
+        if self.visible_columns.contains(&column) {
+            self.visible_columns.retain(|value| *value != column);
+            if self.visible_columns.is_empty() {
+                self.visible_columns = Self::default_visible_columns();
+            }
+        } else {
+            self.visible_columns.push(column);
+        }
+    }
+}
+
+#[derive(Default, Clone, Debug)]
+struct CliOptions {
+    config_path: Option<PathBuf>,
+    theme: Option<Theme>,
+    refresh_interval_ms: Option<u64>,
+    max_processes: Option<usize>,
+    show_full_command: Option<bool>,
+    filter: Option<String>,
+    sort_mode: Option<SortMode>,
+}
+
+impl CliOptions {
+    fn parse<I, S>(args: I) -> Result<Self, String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut options = Self::default();
+        let mut args = args.into_iter().peekable();
+
+        while let Some(raw_arg) = args.next() {
+            let arg = raw_arg.as_ref();
+            match arg {
+                "--config" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| "--config requires a path".to_string())?;
+                    options.config_path = Some(PathBuf::from(value.as_ref()));
+                }
+                "--theme" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| "--theme requires a value".to_string())?;
+                    options.theme = Some(
+                        Theme::from_name(value.as_ref())
+                            .ok_or_else(|| format!("unknown theme '{}'", value.as_ref()))?,
+                    );
+                }
+                "--refresh" | "--refresh-interval" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| format!("{arg} requires a millisecond value"))?;
+                    options.refresh_interval_ms = Some(
+                        value
+                            .as_ref()
+                            .parse::<u64>()
+                            .map_err(|_| format!("invalid refresh value '{}': expected u64", value.as_ref()))?,
+                    );
+                }
+                "--limit" | "--max-processes" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| format!("{arg} requires a numeric value"))?;
+                    options.max_processes = Some(
+                        value
+                            .as_ref()
+                            .parse::<usize>()
+                            .map_err(|_| format!("invalid process limit '{}': expected usize", value.as_ref()))?,
+                    );
+                }
+                "--show-full-command" => options.show_full_command = Some(true),
+                "--hide-full-command" => options.show_full_command = Some(false),
+                "--filter" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| "--filter requires a query".to_string())?;
+                    options.filter = Some(value.as_ref().to_string());
+                }
+                "--sort" | "--sort-mode" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| format!("{arg} requires a value"))?;
+                    options.sort_mode = Some(
+                        match value.as_ref().to_ascii_lowercase().as_str() {
+                            "cpu" => SortMode::Cpu,
+                            "memory" => SortMode::Memory,
+                            "name" => SortMode::Name,
+                            "pid" => SortMode::Pid,
+                            "threads" => SortMode::Threads,
+                            _ => return Err(format!("unknown sort mode '{}'", value.as_ref())),
+                        },
+                    );
+                }
+                "--help" | "-h" => {
+                    return Err(
+                        "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command]".to_string(),
+                    )
+                }
+                _ if arg.starts_with("--") => {
+                    return Err(format!("unknown option '{arg}'"));
+                }
+                _ => {
+                    return Err(format!("unexpected positional argument '{arg}'"));
+                }
+            }
+        }
+
+        Ok(options)
     }
 }
 
@@ -100,6 +482,7 @@ pub struct App {
     pub selected_process: usize,
     pub paused: bool,
     pub config: AppConfig,
+    pub config_path: Option<PathBuf>,
 }
 
 impl App {
@@ -133,6 +516,62 @@ impl App {
             selected_process: 0,
             paused: false,
             config,
+            config_path: None,
+        }
+    }
+
+    pub fn from_cli_args<I, S>(args: I) -> Result<Self, String>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let options = CliOptions::parse(args)?;
+        let load_path = options.config_path.clone();
+        let mut app = match load_path.as_ref() {
+            Some(path) => Self::load_from_file(path)
+                .unwrap_or_else(|_| Self::with_config(AppConfig::default())),
+            None => Self::with_config(AppConfig::default()),
+        };
+        app.config_path = load_path;
+        if let Some(theme) = options.theme {
+            app.config.theme = theme;
+        }
+        if let Some(refresh_interval_ms) = options.refresh_interval_ms {
+            app.config.refresh_interval_ms = refresh_interval_ms;
+        }
+        if let Some(max_processes) = options.max_processes {
+            app.config.max_processes = max_processes;
+        }
+        if let Some(show_full_command) = options.show_full_command {
+            app.config.show_full_command = show_full_command;
+        }
+        if let Some(filter) = options.filter {
+            app.query = filter;
+        }
+        if let Some(sort_mode) = options.sort_mode {
+            app.sort_mode = sort_mode;
+        }
+        app.config.apply_defaults();
+        Ok(app)
+    }
+
+    pub fn load_from_file(path: impl AsRef<Path>) -> io::Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let config = AppConfig::load_from_file(&path)?;
+        let mut app = Self::with_config(config);
+        app.config_path = Some(path);
+        Ok(app)
+    }
+
+    pub fn save_config(&self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.config.save_to_file(path)
+    }
+
+    #[allow(dead_code)]
+    pub fn save_current_config(&self) -> io::Result<()> {
+        match &self.config_path {
+            Some(path) => self.save_config(path),
+            None => Ok(()),
         }
     }
 
@@ -202,6 +641,82 @@ impl App {
         self.selected_process = 0;
     }
 
+    pub fn add_filter_preset(&mut self, name: impl Into<String>, query: impl Into<String>) {
+        let name = name.into();
+        let query = query.into();
+        match self
+            .config
+            .filter_presets
+            .iter_mut()
+            .find(|preset| preset.name == name)
+        {
+            Some(preset) => preset.query = query,
+            None => self
+                .config
+                .filter_presets
+                .push(FilterPreset { name, query }),
+        }
+    }
+
+    pub fn apply_filter_preset(&mut self, name: &str) -> Option<String> {
+        let query = self
+            .config
+            .filter_presets
+            .iter()
+            .find(|preset| preset.name == name)?
+            .query
+            .clone();
+        self.query = query.clone();
+        Some(query)
+    }
+
+    pub fn remove_filter_preset(&mut self, name: &str) {
+        self.config
+            .filter_presets
+            .retain(|preset| preset.name != name);
+    }
+
+    pub fn add_sort_profile(&mut self, name: impl Into<String>, sort_mode: SortMode) {
+        let name = name.into();
+        match self
+            .config
+            .sort_profiles
+            .iter_mut()
+            .find(|profile| profile.name == name)
+        {
+            Some(profile) => profile.sort_mode = sort_mode,
+            None => self
+                .config
+                .sort_profiles
+                .push(SortProfile { name, sort_mode }),
+        }
+    }
+
+    pub fn apply_sort_profile(&mut self, name: &str) -> Option<SortMode> {
+        let sort_mode = self
+            .config
+            .sort_profiles
+            .iter()
+            .find(|profile| profile.name == name)?
+            .sort_mode;
+        self.sort_mode = sort_mode;
+        Some(sort_mode)
+    }
+
+    pub fn remove_sort_profile(&mut self, name: &str) {
+        self.config
+            .sort_profiles
+            .retain(|profile| profile.name != name);
+    }
+
+    pub fn set_visible_columns(&mut self, columns: Vec<DisplayColumn>) {
+        self.config.set_visible_columns(columns);
+    }
+
+    pub fn toggle_visible_column(&mut self, column: DisplayColumn) {
+        self.config.toggle_column(column);
+    }
+
     pub fn toggle_focus(&mut self) {
         self.focused_block = match self.focused_block {
             FocusedBlock::CommandPalette => FocusedBlock::CpuRam,
@@ -242,7 +757,14 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, AppConfig, FocusedBlock, ProcessItem, SortMode, Theme};
+    use super::{
+        App, AppConfig, DisplayColumn, FilterPreset, FocusedBlock, ProcessItem, SortMode,
+        SortProfile, Theme,
+    };
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     fn process(pid: &str, name: &str, cpu: f32, mem_mb: u64, threads: usize) -> ProcessItem {
         ProcessItem {
@@ -255,6 +777,14 @@ mod tests {
             threads,
             parent_pid: 1,
         }
+    }
+
+    fn unique_temp_path(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{name}-{nanos}.json"))
     }
 
     #[test]
@@ -371,6 +901,9 @@ mod tests {
             max_processes: 12,
             theme: Theme::Solarized,
             show_full_command: false,
+            visible_columns: AppConfig::default_visible_columns(),
+            filter_presets: Vec::new(),
+            sort_profiles: AppConfig::default_sort_profiles(),
         });
 
         assert_eq!(app.config.refresh_interval_ms, 500);
@@ -455,5 +988,123 @@ mod tests {
         assert_eq!(info.threads, 32);
         assert_eq!(info.parent_pid, 1);
         assert_eq!(app.selected_pid(), Some(4301));
+    }
+
+    #[test]
+    fn config_file_round_trip_persists_user_prefs() {
+        let path = unique_temp_path("hyper-top-config");
+        let mut original = AppConfig::default();
+        original.refresh_interval_ms = 1500;
+        original.max_processes = 24;
+        original.theme = Theme::Solarized;
+        original.show_full_command = false;
+        original.visible_columns =
+            vec![DisplayColumn::Pid, DisplayColumn::Name, DisplayColumn::Cpu];
+        original.filter_presets = vec![FilterPreset {
+            name: "postgres".to_string(),
+            query: "postgres".to_string(),
+        }];
+        original.sort_profiles = vec![SortProfile {
+            name: "Memory".to_string(),
+            sort_mode: SortMode::Memory,
+        }];
+
+        original.save(&path).unwrap();
+        let loaded = AppConfig::load(&path).unwrap();
+        assert_eq!(loaded.refresh_interval_ms, 1500);
+        assert_eq!(loaded.max_processes, 24);
+        assert_eq!(loaded.theme, Theme::Solarized);
+        assert!(!loaded.show_full_command);
+        assert_eq!(
+            loaded.visible_columns,
+            vec![DisplayColumn::Pid, DisplayColumn::Name, DisplayColumn::Cpu]
+        );
+        assert_eq!(loaded.filter_presets[0].name, "postgres");
+        assert_eq!(loaded.sort_profiles[0].sort_mode, SortMode::Memory);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn theme_palette_and_config_support_filter_and_sort_profiles() {
+        let mut app = App::new();
+        app.add_filter_preset("postgres", "postgres");
+        app.add_filter_preset("all", "");
+        assert_eq!(
+            app.apply_filter_preset("postgres"),
+            Some("postgres".to_string())
+        );
+        assert_eq!(app.query, "postgres");
+        app.remove_filter_preset("all");
+        assert!(!app
+            .config
+            .filter_presets
+            .iter()
+            .any(|preset| preset.name == "all"));
+
+        app.add_sort_profile("low-memory", SortMode::Memory);
+        assert_eq!(app.apply_sort_profile("low-memory"), Some(SortMode::Memory));
+        assert_eq!(app.sort_mode, SortMode::Memory);
+        app.remove_sort_profile("low-memory");
+        assert!(!app
+            .config
+            .sort_profiles
+            .iter()
+            .any(|profile| profile.name == "low-memory"));
+
+        app.config.theme = Theme::Midnight;
+        let palette = app.config.theme.palette();
+        assert_eq!(palette.accent, ratatui::style::Color::LightCyan);
+        assert_eq!(palette.footer, ratatui::style::Color::LightRed);
+        assert_eq!(Theme::from_name("midnight"), Some(Theme::Midnight));
+
+        app.set_visible_columns(vec![DisplayColumn::Pid, DisplayColumn::Name]);
+        assert_eq!(
+            app.config.visible_columns,
+            vec![DisplayColumn::Pid, DisplayColumn::Name]
+        );
+        app.toggle_visible_column(DisplayColumn::Threads);
+        assert!(app.config.visible_columns.contains(&DisplayColumn::Threads));
+        app.toggle_visible_column(DisplayColumn::Threads);
+        assert!(!app.config.visible_columns.contains(&DisplayColumn::Threads));
+        assert_eq!(
+            DisplayColumn::from_name("threads"),
+            Some(DisplayColumn::Threads)
+        );
+    }
+
+    #[test]
+    fn cli_args_override_config_defaults_and_load_files() {
+        let path = unique_temp_path("hyper-top-cli");
+        let mut config = AppConfig::default();
+        config.theme = Theme::Solarized;
+        config.refresh_interval_ms = 1200;
+        config.max_processes = 30;
+        config.save_to_file(&path).unwrap();
+
+        let app = App::from_cli_args([
+            "--config",
+            path.to_str().unwrap(),
+            "--theme",
+            "midnight",
+            "--refresh",
+            "500",
+            "--limit",
+            "12",
+            "--sort",
+            "memory",
+            "--filter",
+            "database",
+        ])
+        .unwrap();
+
+        assert_eq!(app.config.theme, Theme::Midnight);
+        assert_eq!(app.config.refresh_interval_ms, 500);
+        assert_eq!(app.config.max_processes, 12);
+        assert_eq!(app.sort_mode, SortMode::Memory);
+        assert_eq!(app.query, "database");
+        assert_eq!(app.config_path, Some(path.clone()));
+
+        let _ = fs::remove_file(path);
     }
 }
