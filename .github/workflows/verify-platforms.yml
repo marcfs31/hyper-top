@@ -16,7 +16,7 @@ jobs:
   linux-docker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build and verify in Linux container
         run: |
           docker build -f docker/Dockerfile.verify -t hyper-top-verify .
@@ -37,7 +37,7 @@ jobs:
             os: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
