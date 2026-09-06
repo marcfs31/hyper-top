@@ -1,6 +1,6 @@
 use crate::app::{ProcessItem, SystemState};
 use std::time::{Duration, Instant};
-use sysinfo::{CpuRefreshKind, ProcessRefreshKind, ProcessStatus, RefreshKind, System};
+use sysinfo::{CpuRefreshKind, ProcessRefreshKind, ProcessStatus, RefreshKind, System, Users};
 use tokio::sync::mpsc;
 
 pub enum ProcessCommand {
@@ -21,6 +21,7 @@ pub fn spawn_telemetry_engine(
         );
 
         let mut message = "Telemetry online".to_string();
+        let users = Users::new_with_refreshed_list();
         loop {
             tokio::time::sleep(refresh_interval).await;
             while let Ok(command) = commands.try_recv() {
@@ -45,14 +46,45 @@ pub fn spawn_telemetry_engine(
             sys.refresh_memory();
             sys.refresh_processes();
 
+            let disks = sysinfo::Disks::new_with_refreshed_list();
             let global_cpu = sys.global_cpu_info().cpu_usage();
             let cpu_count = sys.cpus().len();
+            let core_usage = sys
+                .cpus()
+                .iter()
+                .map(|cpu| cpu.cpu_usage())
+                .collect::<Vec<_>>();
             let cpu_frequency_mhz = sys.cpus().first().map(|cpu| cpu.frequency()).unwrap_or(0);
             let load = System::load_average();
             let ram_used = sys.used_memory() as f64 / 1_073_741_824.0;
             let ram_total = sys.total_memory() as f64 / 1_073_741_824.0;
             let swap_used = sys.used_swap() as f64 / 1_073_741_824.0;
             let swap_total = sys.total_swap() as f64 / 1_073_741_824.0;
+            let storage_mounts = disks
+                .iter()
+                .map(|disk| {
+                    let total = disk.total_space() as f64 / 1_073_741_824.0;
+                    let available = disk.available_space() as f64 / 1_073_741_824.0;
+                    let used =
+                        (disk.total_space() - disk.available_space()) as f64 / 1_073_741_824.0;
+                    crate::app::StorageMount {
+                        mount: disk.mount_point().to_string_lossy().to_string(),
+                        total_gb: total,
+                        used_gb: used,
+                        available_gb: available,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let storage_disk = storage_mounts
+                .iter()
+                .find(|disk| disk.mount == "/" || disk.mount == "/private/var/root")
+                .or_else(|| storage_mounts.first());
+            let storage_total = storage_disk.map(|disk| disk.total_gb).unwrap_or(0.0);
+            let storage_used = storage_disk.map(|disk| disk.used_gb).unwrap_or(0.0);
+            let storage_available = storage_disk.map(|disk| disk.available_gb).unwrap_or(0.0);
+            let storage_mount = storage_disk
+                .map(|disk| disk.mount.clone())
+                .unwrap_or_else(|| "/".to_string());
 
             let mut procs: Vec<ProcessItem> = sys
                 .processes()
@@ -64,15 +96,36 @@ pub fn spawn_telemetry_engine(
                     } else {
                         command
                     };
+                    let parent = proc.parent().and_then(|parent| sys.process(parent));
+                    let parent_uid = parent
+                        .and_then(|process| process.user_id())
+                        .map(|user_id| user_id.to_string())
+                        .unwrap_or_else(|| "?".to_string());
+                    let parent_user = parent
+                        .and_then(|process| process.user_id())
+                        .and_then(|user_id| users.get_user_by_id(user_id))
+                        .map(|user| user.name().to_string())
+                        .unwrap_or_else(|| "?".to_string());
                     ProcessItem {
                         pid: pid.to_string(),
                         name: proc.name().to_string(),
+                        user: proc
+                            .user_id()
+                            .and_then(|user_id| users.get_user_by_id(user_id))
+                            .map(|user| user.name().to_string())
+                            .unwrap_or_else(|| "?".to_string()),
+                        uid: proc
+                            .user_id()
+                            .map(|user_id| user_id.to_string())
+                            .unwrap_or_else(|| "?".to_string()),
                         command,
                         cpu: proc.cpu_usage(),
                         mem_mb: proc.memory() / 1024 / 1024,
                         status: format_process_status(proc.status()),
                         threads: proc.tasks().map_or(0, |tasks| tasks.len()),
                         parent_pid: proc.parent().map_or(0, |parent| parent.as_u32()),
+                        parent_user,
+                        parent_uid,
                         runtime: Duration::from_secs(proc.run_time()),
                     }
                 })
@@ -95,10 +148,16 @@ pub fn spawn_telemetry_engine(
                 cpu_usage: global_cpu,
                 cpu_count,
                 cpu_frequency_mhz,
+                core_usage,
                 ram_used_gb: ram_used,
                 ram_total_gb: ram_total,
                 swap_used_gb: swap_used,
                 swap_total_gb: swap_total,
+                storage_total_gb: storage_total,
+                storage_used_gb: storage_used,
+                storage_available_gb: storage_available,
+                storage_mount,
+                storage_mounts,
                 uptime: Duration::from_secs(System::uptime()),
                 load_average: [load.one, load.five, load.fifteen],
                 running_processes: sys.processes().len(),

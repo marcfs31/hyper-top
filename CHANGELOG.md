@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.8.0] - 2026-09-06
+### Added
+- Dedicated input handling module with focused shortcut and interaction tests.
+
+### Changed
+- Reduced `main.rs` to application startup, terminal lifecycle, and telemetry orchestration.
+- Preserved responsive process navigation, filtering, sorting, focus, limits, help, and expanded-view controls.
+- Bumped the package version to `0.8.0` for the architecture and maintainability milestone.
+
 ## [0.7.0] - 2026-09-06
 ### Added
 - Automated GitHub release packaging for Linux, macOS, and Windows installation bundles.

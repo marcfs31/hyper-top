@@ -17,6 +17,7 @@ pub enum FocusedBlock {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortMode {
+    None,
     Cpu,
     Memory,
     Name,
@@ -115,11 +116,17 @@ pub struct ThemePalette {
 pub enum DisplayColumn {
     Pid,
     Name,
+    User,
+    Uid,
     Cpu,
     Memory,
     Threads,
     Status,
     Command,
+    Parent,
+    ParentUser,
+    ParentUid,
+    Runtime,
 }
 
 impl DisplayColumn {
@@ -127,23 +134,36 @@ impl DisplayColumn {
         match self {
             Self::Pid => "PID",
             Self::Name => "NAME",
+            Self::User => "USER",
+            Self::Uid => "UID",
             Self::Cpu => "CPU",
             Self::Memory => "MEMORY",
             Self::Threads => "THREADS",
             Self::Status => "STATUS",
             Self::Command => "COMMAND",
+            Self::Parent => "PPID",
+            Self::ParentUser => "PUSER",
+            Self::ParentUid => "PUID",
+            Self::Runtime => "RUNTIME",
         }
     }
 
+    #[cfg(test)]
     pub fn from_name(name: &str) -> Option<Self> {
         match name.to_ascii_lowercase().as_str() {
             "pid" => Some(Self::Pid),
             "name" => Some(Self::Name),
+            "user" | "owner" => Some(Self::User),
+            "uid" | "user-id" => Some(Self::Uid),
             "cpu" => Some(Self::Cpu),
             "memory" => Some(Self::Memory),
             "threads" => Some(Self::Threads),
             "status" => Some(Self::Status),
             "command" => Some(Self::Command),
+            "parent" | "ppid" => Some(Self::Parent),
+            "parent-user" | "puser" => Some(Self::ParentUser),
+            "parent-uid" | "puid" => Some(Self::ParentUid),
+            "runtime" | "uptime" => Some(Self::Runtime),
             _ => None,
         }
     }
@@ -202,24 +222,6 @@ impl AlertThresholds {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ProcessSeverity {
-    Normal,
-    Warning,
-    Critical,
-}
-
-impl ProcessSeverity {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Normal => "normal",
-            Self::Warning => "warning",
-            Self::Critical => "critical",
-        }
-    }
-}
-
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct AppConfig {
     pub refresh_interval_ms: u64,
@@ -241,7 +243,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             refresh_interval_ms: 900,
-            max_processes: 80,
+            max_processes: 0,
             theme: Theme::Default,
             show_full_command: true,
             compact_mode: false,
@@ -258,8 +260,15 @@ impl AppConfig {
         vec![
             DisplayColumn::Pid,
             DisplayColumn::Name,
+            DisplayColumn::User,
+            DisplayColumn::Uid,
             DisplayColumn::Cpu,
             DisplayColumn::Memory,
+            DisplayColumn::Threads,
+            DisplayColumn::Status,
+            DisplayColumn::Parent,
+            DisplayColumn::ParentUser,
+            DisplayColumn::ParentUid,
         ]
     }
 
@@ -297,7 +306,9 @@ impl AppConfig {
         }
         self.alert_thresholds = self.alert_thresholds.clamp();
         self.refresh_interval_ms = self.refresh_interval_ms.clamp(250, 2500).max(250).min(2500);
-        self.max_processes = self.max_processes.max(10).min(250);
+        if self.max_processes != 0 {
+            self.max_processes = self.max_processes.clamp(10, 250);
+        }
     }
 
     pub fn theme_name(&self) -> &'static str {
@@ -324,6 +335,8 @@ impl AppConfig {
         }
     }
 
+    #[cfg(test)]
+    #[cfg(test)]
     pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
         Self::load_from_file(path)
     }
@@ -350,11 +363,12 @@ impl AppConfig {
         fs::write(path, data)
     }
 
+    #[cfg(test)]
     pub fn save(&self, path: impl AsRef<Path>) -> io::Result<()> {
         self.save_to_file(path)
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn from_cli_args<I, S>(args: I) -> Result<Self, String>
     where
         I: IntoIterator<Item = S>,
@@ -381,6 +395,7 @@ impl AppConfig {
         Ok(config)
     }
 
+    #[cfg(test)]
     pub fn set_visible_columns(&mut self, columns: Vec<DisplayColumn>) {
         let mut unique = Vec::new();
         for column in columns {
@@ -498,6 +513,7 @@ impl CliOptions {
                         .ok_or_else(|| format!("{arg} requires a value"))?;
                     options.sort_mode = Some(
                         match value.as_ref().to_ascii_lowercase().as_str() {
+                            "none" | "clear" => SortMode::None,
                             "cpu" => SortMode::Cpu,
                             "memory" => SortMode::Memory,
                             "name" => SortMode::Name,
@@ -529,12 +545,16 @@ impl CliOptions {
 pub struct ProcessItem {
     pub pid: String,
     pub name: String,
+    pub user: String,
+    pub uid: String,
     pub command: String,
     pub cpu: f32,
     pub mem_mb: u64,
     pub status: String,
     pub threads: usize,
     pub parent_pid: u32,
+    pub parent_user: String,
+    pub parent_uid: String,
     pub runtime: Duration,
 }
 
@@ -547,28 +567,22 @@ impl ProcessItem {
         let secs = seconds % 60;
         format!("{}d {:02}h {:02}m {:02}s", days, hours, minutes, secs)
     }
+}
 
-    pub fn severity_with_thresholds(
-        &self,
-        total_memory_mb: u64,
-        thresholds: AlertThresholds,
-    ) -> ProcessSeverity {
-        let memory_pct = if total_memory_mb == 0 {
-            0.0
-        } else {
-            (self.mem_mb as f64 / total_memory_mb as f64) * 100.0
-        };
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct StorageMount {
+    pub mount: String,
+    pub total_gb: f64,
+    pub used_gb: f64,
+    pub available_gb: f64,
+}
 
-        if self.cpu >= thresholds.critical_cpu
-            || memory_pct >= thresholds.critical_memory_pct as f64
-        {
-            ProcessSeverity::Critical
-        } else if self.cpu >= thresholds.warning_cpu
-            || memory_pct >= thresholds.warning_memory_pct as f64
-        {
-            ProcessSeverity::Warning
+impl StorageMount {
+    pub fn percent_used(&self) -> u16 {
+        if self.total_gb <= 0.0 {
+            0
         } else {
-            ProcessSeverity::Normal
+            ((self.used_gb / self.total_gb) * 100.0).clamp(0.0, 100.0) as u16
         }
     }
 }
@@ -577,10 +591,16 @@ pub struct SystemState {
     pub cpu_usage: f32,
     pub cpu_count: usize,
     pub cpu_frequency_mhz: u64,
+    pub core_usage: Vec<f32>,
     pub ram_used_gb: f64,
     pub ram_total_gb: f64,
     pub swap_used_gb: f64,
     pub swap_total_gb: f64,
+    pub storage_total_gb: f64,
+    pub storage_used_gb: f64,
+    pub storage_available_gb: f64,
+    pub storage_mount: String,
+    pub storage_mounts: Vec<StorageMount>,
     pub uptime: Duration,
     pub load_average: [f64; 3],
     pub running_processes: usize,
@@ -588,6 +608,29 @@ pub struct SystemState {
     pub processes: Vec<ProcessItem>,
     pub refreshed_at: Instant,
     pub message: String,
+}
+
+impl SystemState {
+    pub fn storage_percent(&self) -> u16 {
+        if self.storage_total_gb <= 0.0 {
+            0
+        } else {
+            ((self.storage_used_gb / self.storage_total_gb) * 100.0).clamp(0.0, 100.0) as u16
+        }
+    }
+
+    pub fn storage_mounts_summary(&self) -> Vec<StorageMount> {
+        if self.storage_mounts.is_empty() {
+            vec![StorageMount {
+                mount: self.storage_mount.clone(),
+                total_gb: self.storage_total_gb,
+                used_gb: self.storage_used_gb,
+                available_gb: self.storage_available_gb,
+            }]
+        } else {
+            self.storage_mounts.clone()
+        }
+    }
 }
 
 pub struct App {
@@ -601,9 +644,13 @@ pub struct App {
     pub paused: bool,
     pub config: AppConfig,
     pub config_path: Option<PathBuf>,
+    pub focused_pid: Option<u32>,
+    pub expanded_process_view: bool,
+    pub help_scroll: usize,
 }
 
 impl App {
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::with_config(AppConfig::default())
     }
@@ -615,10 +662,16 @@ impl App {
                 cpu_usage: 0.0,
                 cpu_count: 0,
                 cpu_frequency_mhz: 0,
+                core_usage: Vec::new(),
                 ram_used_gb: 0.0,
                 ram_total_gb: 0.0,
                 swap_used_gb: 0.0,
                 swap_total_gb: 0.0,
+                storage_total_gb: 0.0,
+                storage_used_gb: 0.0,
+                storage_available_gb: 0.0,
+                storage_mount: "/".to_string(),
+                storage_mounts: Vec::new(),
                 uptime: Duration::ZERO,
                 load_average: [0.0; 3],
                 running_processes: 0,
@@ -635,6 +688,9 @@ impl App {
             paused: false,
             config,
             config_path: None,
+            focused_pid: None,
+            expanded_process_view: false,
+            help_scroll: 0,
         }
     }
 
@@ -696,13 +752,6 @@ impl App {
     }
 
     #[allow(dead_code)]
-    pub fn save_current_config(&self) -> io::Result<()> {
-        match &self.config_path {
-            Some(path) => self.save_config(path),
-            None => Ok(()),
-        }
-    }
-
     pub fn filtered_processes(&self) -> Vec<&ProcessItem> {
         let query = self.query.to_lowercase();
         self.system_state
@@ -720,6 +769,7 @@ impl App {
     pub fn visible_processes(&self) -> Vec<&ProcessItem> {
         let mut processes = self.filtered_processes();
         match self.sort_mode {
+            SortMode::None => {}
             SortMode::Cpu => processes.sort_by(|a, b| {
                 b.cpu
                     .partial_cmp(&a.cpu)
@@ -734,7 +784,23 @@ impl App {
                 processes.sort_by_key(|process| std::cmp::Reverse(process.threads))
             }
         }
-        processes.truncate(self.config.max_processes.max(1));
+        let limit = self.config.max_processes;
+        if let Some(focused_pid) = self.focused_pid {
+            if let Some(focused_index) = processes
+                .iter()
+                .position(|process| process.pid.parse::<u32>().ok() == Some(focused_pid))
+            {
+                if limit != 0 && focused_index >= limit {
+                    let focused = processes.remove(focused_index);
+                    processes.truncate(limit.saturating_sub(1));
+                    processes.push(focused);
+                    return processes;
+                }
+            }
+        }
+        if limit != 0 {
+            processes.truncate(limit);
+        }
         processes
     }
 
@@ -746,6 +812,23 @@ impl App {
         self.visible_processes()
             .get(self.selected_process)
             .and_then(|process| process.pid.parse().ok())
+    }
+
+    pub fn toggle_process_focus(&mut self) {
+        let selected = self.selected_pid();
+        self.focused_pid = if self.focused_pid.is_some() {
+            None
+        } else {
+            selected
+        };
+    }
+
+    pub fn focus_label(&self) -> &'static str {
+        if self.focused_pid.is_some() {
+            "FOCUSED"
+        } else {
+            "ALL"
+        }
     }
 
     pub fn move_selection(&mut self, delta: i32) {
@@ -760,15 +843,17 @@ impl App {
 
     pub fn cycle_sort(&mut self) {
         self.sort_mode = match self.sort_mode {
+            SortMode::None => SortMode::Cpu,
             SortMode::Cpu => SortMode::Memory,
             SortMode::Memory => SortMode::Name,
             SortMode::Name => SortMode::Pid,
             SortMode::Pid => SortMode::Threads,
-            SortMode::Threads => SortMode::Cpu,
+            SortMode::Threads => SortMode::None,
         };
         self.selected_process = 0;
     }
 
+    #[cfg(test)]
     pub fn add_filter_preset(&mut self, name: impl Into<String>, query: impl Into<String>) {
         let name = name.into();
         let query = query.into();
@@ -786,6 +871,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub fn apply_filter_preset(&mut self, name: &str) -> Option<String> {
         let query = self
             .config
@@ -798,12 +884,14 @@ impl App {
         Some(query)
     }
 
+    #[cfg(test)]
     pub fn remove_filter_preset(&mut self, name: &str) {
         self.config
             .filter_presets
             .retain(|preset| preset.name != name);
     }
 
+    #[cfg(test)]
     pub fn add_sort_profile(&mut self, name: impl Into<String>, sort_mode: SortMode) {
         let name = name.into();
         match self
@@ -820,6 +908,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub fn apply_sort_profile(&mut self, name: &str) -> Option<SortMode> {
         let sort_mode = self
             .config
@@ -831,12 +920,14 @@ impl App {
         Some(sort_mode)
     }
 
+    #[cfg(test)]
     pub fn remove_sort_profile(&mut self, name: &str) {
         self.config
             .sort_profiles
             .retain(|profile| profile.name != name);
     }
 
+    #[cfg(test)]
     pub fn set_visible_columns(&mut self, columns: Vec<DisplayColumn>) {
         self.config.set_visible_columns(columns);
     }
@@ -845,13 +936,9 @@ impl App {
         self.config.toggle_column(column);
     }
 
-    pub fn toggle_visible_column_by_index(&mut self, index: usize) {
-        let columns = self.config.visible_columns.clone();
-        let column = match columns.get(index).copied() {
-            Some(column) => column,
-            None => return,
-        };
-        self.config.toggle_column(column);
+    pub fn clear_filter(&mut self) {
+        self.query.clear();
+        self.selected_process = 0;
     }
 
     pub fn apply_quick_filter(&mut self, index: usize) -> bool {
@@ -904,8 +991,25 @@ impl App {
     }
 
     pub fn adjust_process_limit(&mut self, delta: i32) {
+        if self.config.max_processes == 0 {
+            return;
+        }
         let next = self.config.max_processes as i32 + delta;
         self.config.max_processes = next.max(10).min(250) as usize;
+    }
+
+    pub fn cycle_process_limit(&mut self) {
+        self.config.max_processes = match self.config.max_processes {
+            0 => 50,
+            50 => 80,
+            80 => 150,
+            _ => 0,
+        };
+        self.selected_process = 0;
+    }
+
+    pub fn toggle_expanded_process_view(&mut self) {
+        self.expanded_process_view = !self.expanded_process_view;
     }
 
     pub fn cycle_theme(&mut self) {
@@ -925,7 +1029,7 @@ impl App {
 mod tests {
     use super::{
         AlertThresholds, App, AppConfig, DisplayColumn, FilterPreset, FocusedBlock, ProcessItem,
-        SortMode, SortProfile, Theme,
+        SortMode, SortProfile, SystemState, Theme,
     };
     use std::{
         fs,
@@ -936,12 +1040,16 @@ mod tests {
         ProcessItem {
             pid: pid.to_string(),
             name: name.to_string(),
+            user: "test-user".to_string(),
+            uid: "1000".to_string(),
             command: name.to_string(),
             cpu,
             mem_mb,
             status: "Run".to_string(),
             threads,
             parent_pid: 1,
+            parent_user: "test-user".to_string(),
+            parent_uid: "1000".to_string(),
             runtime: std::time::Duration::from_secs(120),
         }
     }
@@ -968,6 +1076,34 @@ mod tests {
         assert_eq!(thresholds.critical_cpu, 80.0);
         assert_eq!(thresholds.warning_memory_pct, 75.0);
         assert_eq!(thresholds.critical_memory_pct, 75.0);
+    }
+
+    #[test]
+    fn storage_percent_is_clamped_to_valid_percentage_range() {
+        let state = SystemState {
+            cpu_usage: 0.0,
+            cpu_count: 0,
+            cpu_frequency_mhz: 0,
+            core_usage: Vec::new(),
+            ram_used_gb: 0.0,
+            ram_total_gb: 0.0,
+            swap_used_gb: 0.0,
+            swap_total_gb: 0.0,
+            storage_total_gb: 100.0,
+            storage_used_gb: 75.0,
+            storage_available_gb: 25.0,
+            storage_mount: "/".to_string(),
+            storage_mounts: Vec::new(),
+            uptime: std::time::Duration::ZERO,
+            load_average: [0.0; 3],
+            running_processes: 0,
+            total_threads: 0,
+            processes: Vec::new(),
+            refreshed_at: std::time::Instant::now(),
+            message: String::new(),
+        };
+
+        assert_eq!(state.storage_percent(), 75);
     }
 
     #[test]
@@ -1037,7 +1173,28 @@ mod tests {
         assert_eq!(app.sort_mode, SortMode::Threads);
 
         app.cycle_sort();
+        assert_eq!(app.sort_mode, SortMode::None);
+
+        app.cycle_sort();
         assert_eq!(app.sort_mode, SortMode::Cpu);
+    }
+
+    #[test]
+    fn clearing_sort_preserves_telemetry_order() {
+        let mut app = App::new();
+        app.system_state.processes = vec![
+            process("20", "second", 10.0, 100, 2),
+            process("10", "first", 90.0, 200, 4),
+        ];
+
+        app.sort_mode = SortMode::None;
+
+        let names: Vec<_> = app
+            .visible_processes()
+            .iter()
+            .map(|process| process.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["second", "first"]);
     }
 
     #[test]
@@ -1119,6 +1276,14 @@ mod tests {
     }
 
     #[test]
+    fn default_columns_include_process_context() {
+        let columns = AppConfig::default_visible_columns();
+        assert!(columns.contains(&DisplayColumn::Threads));
+        assert!(columns.contains(&DisplayColumn::Status));
+        assert!(columns.contains(&DisplayColumn::Parent));
+    }
+
+    #[test]
     fn sorts_by_cpu_name_and_pid() {
         let mut app = App::new();
         app.system_state.processes = vec![
@@ -1158,12 +1323,16 @@ mod tests {
         app.system_state.processes = vec![ProcessItem {
             pid: "4301".to_string(),
             name: "gnome-shell".to_string(),
+            user: "marc".to_string(),
+            uid: "1000".to_string(),
             command: "gnome-shell --replace".to_string(),
             cpu: 12.5,
             mem_mb: 2048,
             status: "run".to_string(),
             threads: 32,
             parent_pid: 1,
+            parent_user: "root".to_string(),
+            parent_uid: "0".to_string(),
             runtime: std::time::Duration::from_secs(3_600),
         }];
         app.selected_process = 0;
@@ -1285,6 +1454,25 @@ mod tests {
             DisplayColumn::from_name("threads"),
             Some(DisplayColumn::Threads)
         );
+    }
+
+    #[test]
+    fn help_flag_returns_usage_error() {
+        match App::from_cli_args(["--help"]) {
+            Err(error) => assert!(error.contains("Usage: hyper-top")),
+            Ok(_) => panic!("help flag should return a usage error"),
+        }
+    }
+
+    #[test]
+    fn app_config_cli_args_apply_theme_refresh_and_limit() {
+        let config =
+            AppConfig::from_cli_args(["--theme", "solarized", "--refresh", "250", "--limit", "33"])
+                .unwrap();
+
+        assert_eq!(config.theme, Theme::Solarized);
+        assert_eq!(config.refresh_interval_ms, 250);
+        assert_eq!(config.max_processes, 33);
     }
 
     #[test]
