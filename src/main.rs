@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !app.paused {
             if let Ok(new_state) = rx.try_recv() {
                 app.system_state = new_state;
-                let count = app.filtered_processes().len();
+                let count = app.visible_processes().len();
                 if let Some(pid) = app.focused_pid {
                     if let Some(index) = app
                         .visible_processes()

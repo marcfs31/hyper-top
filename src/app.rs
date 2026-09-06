@@ -896,7 +896,7 @@ impl App {
     }
 
     pub fn move_selection(&mut self, delta: i32) {
-        let count = self.filtered_processes().len();
+        let count = self.visible_processes().len();
         if count == 0 {
             self.selected_process = 0;
             return;
@@ -1241,6 +1241,21 @@ mod tests {
         app.selected_process = 5;
         app.move_selection(1);
         assert_eq!(app.selected_process, 2);
+    }
+
+    #[test]
+    fn selection_is_bounded_by_visible_process_limit() {
+        let mut app = App::new();
+        app.config.max_processes = 2;
+        app.system_state.processes = vec![
+            process("1", "one", 1.0, 1, 1),
+            process("2", "two", 2.0, 1, 1),
+            process("3", "three", 3.0, 1, 1),
+        ];
+
+        app.move_selection(10);
+
+        assert_eq!(app.selected_process, 1);
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::{
 use crossterm::event::{KeyCode, KeyModifiers};
 use tokio::sync::mpsc;
 
-const HELP_SCROLL_END: usize = 16;
+const HELP_SCROLL_END: usize = 64;
 
 pub async fn handle_key(
     app: &mut App,
@@ -18,8 +18,10 @@ pub async fn handle_key(
             KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
                 app.input_mode = InputMode::Normal;
             }
-            KeyCode::Up => app.help_scroll = app.help_scroll.saturating_sub(1),
-            KeyCode::Down => app.help_scroll = app.help_scroll.saturating_add(1),
+            KeyCode::Up | KeyCode::Char('k') => app.help_scroll = app.help_scroll.saturating_sub(1),
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.help_scroll = app.help_scroll.saturating_add(1)
+            }
             KeyCode::PageUp => app.help_scroll = app.help_scroll.saturating_sub(8),
             KeyCode::PageDown => app.help_scroll = app.help_scroll.saturating_add(8),
             KeyCode::Home => app.help_scroll = 0,
@@ -137,9 +139,7 @@ pub async fn handle_key(
         KeyCode::PageUp => app.move_selection(-10),
         KeyCode::PageDown => app.move_selection(10),
         KeyCode::Home => app.selected_process = 0,
-        KeyCode::End => {
-            app.selected_process = app.filtered_processes().len().saturating_sub(1);
-        }
+        KeyCode::End => app.selected_process = app.visible_processes().len().saturating_sub(1),
         KeyCode::Enter => app.toggle_process_focus(),
         KeyCode::Char('0') => {
             app.sort_mode = SortMode::None;
@@ -195,6 +195,20 @@ mod tests {
         assert_eq!(app.input_mode, InputMode::Help);
         handle_key(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx).await;
         assert_eq!(app.input_mode, InputMode::Normal);
+    }
+
+    #[tokio::test]
+    async fn help_navigation_does_not_change_normal_selection() {
+        let mut app = App::with_config(AppConfig::default());
+        let tx = channel();
+
+        handle_key(&mut app, KeyCode::Char('?'), KeyModifiers::NONE, &tx).await;
+        handle_key(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx).await;
+        handle_key(&mut app, KeyCode::Char('j'), KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.help_scroll, 2);
+        assert_eq!(app.selected_process, 0);
+        handle_key(&mut app, KeyCode::Home, KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.help_scroll, 0);
     }
 
     #[tokio::test]

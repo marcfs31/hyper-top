@@ -59,7 +59,6 @@ pub fn draw(f: &mut Frame, app: &App) {
         }),
     ]))
     .wrap(Wrap { trim: true })
-    .scroll((app.help_scroll.min(16).min(u16::MAX as usize) as u16, 0))
     .block(
         Block::default()
             .borders(Borders::ALL)
