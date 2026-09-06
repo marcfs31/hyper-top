@@ -25,6 +25,42 @@ pub enum InputMode {
     Help,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Theme {
+    Default,
+    Solarized,
+    Midnight,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct AppConfig {
+    pub refresh_interval_ms: u64,
+    pub max_processes: usize,
+    pub theme: Theme,
+    pub show_full_command: bool,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            refresh_interval_ms: 900,
+            max_processes: 80,
+            theme: Theme::Default,
+            show_full_command: true,
+        }
+    }
+}
+
+impl AppConfig {
+    pub fn theme_name(&self) -> &'static str {
+        match self.theme {
+            Theme::Default => "DEFAULT",
+            Theme::Solarized => "SOLARIZED",
+            Theme::Midnight => "MIDNIGHT",
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct ProcessItem {
     pub pid: String,
@@ -63,10 +99,15 @@ pub struct App {
     pub sort_mode: SortMode,
     pub selected_process: usize,
     pub paused: bool,
+    pub config: AppConfig,
 }
 
 impl App {
     pub fn new() -> Self {
+        Self::with_config(AppConfig::default())
+    }
+
+    pub fn with_config(config: AppConfig) -> Self {
         Self {
             focused_block: FocusedBlock::ProcessTable,
             system_state: SystemState {
@@ -91,6 +132,7 @@ impl App {
             sort_mode: SortMode::Cpu,
             selected_process: 0,
             paused: false,
+            config,
         }
     }
 
@@ -125,6 +167,7 @@ impl App {
                 processes.sort_by_key(|process| std::cmp::Reverse(process.threads))
             }
         }
+        processes.truncate(self.config.max_processes.max(1));
         processes
     }
 
@@ -168,6 +211,30 @@ impl App {
         };
     }
 
+    pub fn cycle_refresh_interval(&mut self) {
+        let next = match self.config.refresh_interval_ms {
+            250 => 500,
+            500 => 900,
+            900 => 1500,
+            1500 => 2500,
+            _ => 250,
+        };
+        self.config.refresh_interval_ms = next;
+    }
+
+    pub fn adjust_process_limit(&mut self, delta: i32) {
+        let next = self.config.max_processes as i32 + delta;
+        self.config.max_processes = next.max(10).min(250) as usize;
+    }
+
+    pub fn cycle_theme(&mut self) {
+        self.config.theme = match self.config.theme {
+            Theme::Default => Theme::Solarized,
+            Theme::Solarized => Theme::Midnight,
+            Theme::Midnight => Theme::Default,
+        };
+    }
+
     pub fn status(&self) -> &str {
         &self.system_state.message
     }
@@ -175,7 +242,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, FocusedBlock, ProcessItem, SortMode};
+    use super::{App, AppConfig, FocusedBlock, ProcessItem, SortMode, Theme};
 
     fn process(pid: &str, name: &str, cpu: f32, mem_mb: u64, threads: usize) -> ProcessItem {
         ProcessItem {
@@ -295,6 +362,42 @@ mod tests {
         app.sort_mode = SortMode::Threads;
         app.selected_process = 0;
         assert_eq!(app.visible_processes()[0].name, "large");
+    }
+
+    #[test]
+    fn custom_config_controls_refresh_and_process_limit() {
+        let mut app = App::with_config(AppConfig {
+            refresh_interval_ms: 500,
+            max_processes: 12,
+            theme: Theme::Solarized,
+            show_full_command: false,
+        });
+
+        assert_eq!(app.config.refresh_interval_ms, 500);
+        assert_eq!(app.config.max_processes, 12);
+        assert_eq!(app.config.theme, Theme::Solarized);
+
+        app.cycle_refresh_interval();
+        assert_eq!(app.config.refresh_interval_ms, 900);
+
+        app.adjust_process_limit(20);
+        assert_eq!(app.config.max_processes, 32);
+
+        app.cycle_theme();
+        assert_eq!(app.config.theme, Theme::Midnight);
+    }
+
+    #[test]
+    fn visible_process_count_uses_config_limit() {
+        let mut app = App::new();
+        app.config.max_processes = 2;
+        app.system_state.processes = vec![
+            process("10", "first", 90.0, 1, 1),
+            process("20", "second", 80.0, 2, 2),
+            process("30", "third", 70.0, 3, 3),
+        ];
+
+        assert_eq!(app.visible_processes().len(), 2);
     }
 
     #[test]

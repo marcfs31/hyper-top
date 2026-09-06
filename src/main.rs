@@ -2,7 +2,7 @@ mod app;
 mod telemetry;
 mod ui;
 
-use app::{App, InputMode, SortMode};
+use app::{App, AppConfig, InputMode, SortMode};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -21,11 +21,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let mut app = App::with_config(AppConfig::default());
     let (tx, mut rx) = mpsc::channel(10);
     let (command_tx, command_rx) = mpsc::channel(10);
-    telemetry::spawn_telemetry_engine(tx, command_rx);
-
-    let mut app = App::new();
+    telemetry::spawn_telemetry_engine(
+        tx,
+        command_rx,
+        std::time::Duration::from_millis(app.config.refresh_interval_ms),
+    );
 
     while app.is_running {
         terminal.draw(|f| ui::draw(f, &app))?;
@@ -109,6 +112,17 @@ async fn handle_key(
         (KeyCode::Char('/'), KeyModifiers::NONE) => app.input_mode = InputMode::Search,
         (KeyCode::Char(' '), KeyModifiers::NONE) => app.paused = !app.paused,
         (KeyCode::Char('s'), KeyModifiers::NONE) => app.cycle_sort(),
+        (KeyCode::Char('r'), KeyModifiers::NONE) => {
+            app.cycle_refresh_interval();
+            let _ = command_tx
+                .send(ProcessCommand::SetRefreshInterval(
+                    app.config.refresh_interval_ms,
+                ))
+                .await;
+        }
+        (KeyCode::Char('T'), KeyModifiers::NONE) => app.cycle_theme(),
+        (KeyCode::Char('['), KeyModifiers::NONE) => app.adjust_process_limit(-10),
+        (KeyCode::Char(']'), KeyModifiers::NONE) => app.adjust_process_limit(10),
         (KeyCode::Char('x'), KeyModifiers::NONE) if app.selected_pid().is_some() => {
             app.input_mode = InputMode::ConfirmKill;
         }

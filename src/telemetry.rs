@@ -5,11 +5,13 @@ use tokio::sync::mpsc;
 
 pub enum ProcessCommand {
     Kill(u32),
+    SetRefreshInterval(u64),
 }
 
 pub fn spawn_telemetry_engine(
     tx: mpsc::Sender<SystemState>,
     mut commands: mpsc::Receiver<ProcessCommand>,
+    mut refresh_interval: Duration,
 ) {
     tokio::spawn(async move {
         let mut sys = System::new_with_specifics(
@@ -20,7 +22,7 @@ pub fn spawn_telemetry_engine(
 
         let mut message = "Telemetry online".to_string();
         loop {
-            tokio::time::sleep(Duration::from_millis(900)).await;
+            tokio::time::sleep(refresh_interval).await;
             while let Ok(command) = commands.try_recv() {
                 match command {
                     ProcessCommand::Kill(pid) => {
@@ -32,6 +34,9 @@ pub fn spawn_telemetry_engine(
                             Some(_) => format!("Could not terminate PID {pid}"),
                             None => format!("PID {pid} is no longer running"),
                         };
+                    }
+                    ProcessCommand::SetRefreshInterval(interval_ms) => {
+                        refresh_interval = Duration::from_millis(interval_ms.max(250).min(2500));
                     }
                 }
             }

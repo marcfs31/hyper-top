@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.5.0] - 2026-09-06
+### Added
+- Configuration-driven flexibility for telemetry refresh cadence, view density, and theme selection.
+- Runtime customization controls for refresh rate and process display count via keyboard shortcuts.
+- More polished status metadata that surfaces the active theme and tuning settings directly in the interface.
+
+### Changed
+- The app now exposes a reusable `AppConfig` model for customizing runtime behavior without changing core logic.
+- Improved UI affordances for tuning the live monitoring experience while preserving the existing workflow.
+- Bumped the package version to `0.5.0` to reflect the customization milestone.
+
 ## [0.4.0] - 2026-09-06
 ### Added
 - Comprehensive automated regression tests covering process selection, filtering, sorting, focus toggling, and process metadata handling.
