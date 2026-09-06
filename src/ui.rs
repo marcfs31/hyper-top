@@ -492,6 +492,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             app.focused_block == FocusedBlock::ProcessDetails,
             palette,
             &app.system_state,
+            app.details_scroll,
         );
     }
 
@@ -589,6 +590,7 @@ fn render_process_details(
     focused: bool,
     palette: crate::app::ThemePalette,
     system: &crate::app::SystemState,
+    details_scroll: usize,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -695,6 +697,7 @@ fn render_process_details(
     }
 
     let widget = Paragraph::new(content)
+        .scroll((details_scroll.min(u16::MAX as usize) as u16, 0))
         .wrap(Wrap { trim: true })
         .block(block);
     f.render_widget(widget, area);

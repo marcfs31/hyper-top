@@ -719,6 +719,7 @@ pub struct App {
     pub expanded_process_view: bool,
     pub tree_view: bool,
     pub help_scroll: usize,
+    pub details_scroll: usize,
 }
 
 impl App {
@@ -764,6 +765,7 @@ impl App {
             expanded_process_view: false,
             tree_view: false,
             help_scroll: 0,
+            details_scroll: 0,
         }
     }
 
@@ -1149,6 +1151,11 @@ impl App {
     pub fn toggle_tree_view(&mut self) {
         self.tree_view = !self.tree_view;
         self.selected_process = 0;
+    }
+
+    pub fn move_details_scroll(&mut self, delta: i32) {
+        let next = self.details_scroll as i32 + delta;
+        self.details_scroll = next.max(0) as usize;
     }
 
     pub fn cycle_theme(&mut self) {
