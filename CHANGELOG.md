@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.9.3] - 2026-09-06
+### Fixed
+- Mouse-wheel scrolling now scrolls process details when the Details panel is focused.
+- Details scrolling is clamped to the available content so it cannot overshoot into blank space.
+
 ## [0.9.2] - 2026-09-06
 ### Added
 - Scrollable process details with arrow keys, `j`/`k`, PageUp/PageDown, and Home/End when the Details panel is focused.

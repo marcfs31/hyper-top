@@ -696,8 +696,13 @@ fn render_process_details(
         )));
     }
 
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = content.len().saturating_sub(visible_height);
     let widget = Paragraph::new(content)
-        .scroll((details_scroll.min(u16::MAX as usize) as u16, 0))
+        .scroll((
+            details_scroll.min(max_scroll).min(u16::MAX as usize) as u16,
+            0,
+        ))
         .wrap(Wrap { trim: true })
         .block(block);
     f.render_widget(widget, area);

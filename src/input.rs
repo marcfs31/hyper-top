@@ -218,6 +218,8 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
         MouseEventKind::ScrollUp => {
             if app.input_mode == InputMode::Help {
                 app.help_scroll = app.help_scroll.saturating_sub(3);
+            } else if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(-3);
             } else {
                 app.move_selection(-3);
             }
@@ -225,6 +227,8 @@ pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
         MouseEventKind::ScrollDown => {
             if app.input_mode == InputMode::Help {
                 app.help_scroll = app.help_scroll.saturating_add(3);
+            } else if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(3);
             } else {
                 app.move_selection(3);
             }
@@ -350,5 +354,19 @@ mod tests {
             },
         );
         assert_eq!(app.help_scroll, 3);
+
+        app.input_mode = InputMode::Normal;
+        app.focused_block = crate::app::FocusedBlock::ProcessDetails;
+        handle_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.details_scroll, 3);
+        assert_eq!(app.selected_process, 0);
     }
 }
