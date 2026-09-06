@@ -123,6 +123,7 @@ async fn handle_key(
         (KeyCode::Char('/'), KeyModifiers::NONE) => app.input_mode = InputMode::Search,
         (KeyCode::Char(' '), KeyModifiers::NONE) => app.paused = !app.paused,
         (KeyCode::Char('s'), KeyModifiers::NONE) => app.cycle_sort(),
+        (KeyCode::Char('z'), KeyModifiers::NONE) => app.toggle_compact_mode(),
         (KeyCode::Char('r'), KeyModifiers::NONE) => {
             app.cycle_refresh_interval();
             let _ = command_tx
@@ -134,6 +135,33 @@ async fn handle_key(
         (KeyCode::Char('T'), KeyModifiers::NONE) => app.cycle_theme(),
         (KeyCode::Char('['), KeyModifiers::NONE) => app.adjust_process_limit(-10),
         (KeyCode::Char(']'), KeyModifiers::NONE) => app.adjust_process_limit(10),
+        (KeyCode::Char('1'), KeyModifiers::NONE) => {
+            let _ = app.apply_quick_filter(0);
+        }
+        (KeyCode::Char('2'), KeyModifiers::NONE) => {
+            let _ = app.apply_quick_filter(1);
+        }
+        (KeyCode::Char('3'), KeyModifiers::NONE) => {
+            let _ = app.apply_quick_filter(2);
+        }
+        (KeyCode::Char('4'), KeyModifiers::NONE) => {
+            let _ = app.apply_quick_filter(3);
+        }
+        (KeyCode::Char('5'), KeyModifiers::NONE) => {
+            let _ = app.apply_quick_filter(4);
+        }
+        (KeyCode::Char('6'), KeyModifiers::NONE) => {
+            let _ = app.apply_quick_filter(5);
+        }
+        (KeyCode::Char('7'), KeyModifiers::NONE) => {
+            app.toggle_visible_column_by_index(0);
+        }
+        (KeyCode::Char('8'), KeyModifiers::NONE) => {
+            app.toggle_visible_column_by_index(1);
+        }
+        (KeyCode::Char('9'), KeyModifiers::NONE) => {
+            app.toggle_visible_column_by_index(2);
+        }
         (KeyCode::Char('x'), KeyModifiers::NONE) if app.selected_pid().is_some() => {
             app.input_mode = InputMode::ConfirmKill;
         }

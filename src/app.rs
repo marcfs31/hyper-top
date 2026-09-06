@@ -160,6 +160,65 @@ pub struct SortProfile {
     pub name: String,
     pub sort_mode: SortMode,
 }
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
+pub struct AlertThresholds {
+    pub warning_cpu: f32,
+    pub critical_cpu: f32,
+    pub warning_memory_pct: f32,
+    pub critical_memory_pct: f32,
+}
+
+impl Default for AlertThresholds {
+    fn default() -> Self {
+        Self {
+            warning_cpu: 70.0,
+            critical_cpu: 90.0,
+            warning_memory_pct: 70.0,
+            critical_memory_pct: 90.0,
+        }
+    }
+}
+
+impl AlertThresholds {
+    pub fn clamp(&self) -> Self {
+        let warning_cpu = self.warning_cpu.clamp(10.0, 95.0);
+        let mut critical_cpu = self.critical_cpu.clamp(20.0, 99.0);
+        let warning_memory_pct = self.warning_memory_pct.clamp(10.0, 95.0);
+        let mut critical_memory_pct = self.critical_memory_pct.clamp(20.0, 99.0);
+
+        if critical_cpu < warning_cpu {
+            critical_cpu = warning_cpu;
+        }
+        if critical_memory_pct < warning_memory_pct {
+            critical_memory_pct = warning_memory_pct;
+        }
+
+        Self {
+            warning_cpu,
+            critical_cpu,
+            warning_memory_pct,
+            critical_memory_pct,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProcessSeverity {
+    Normal,
+    Warning,
+    Critical,
+}
+
+impl ProcessSeverity {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Warning => "warning",
+            Self::Critical => "critical",
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -167,6 +226,9 @@ pub struct AppConfig {
     pub max_processes: usize,
     pub theme: Theme,
     pub show_full_command: bool,
+    pub compact_mode: bool,
+    #[serde(default)]
+    pub alert_thresholds: AlertThresholds,
     #[serde(default)]
     pub visible_columns: Vec<DisplayColumn>,
     #[serde(default)]
@@ -182,6 +244,8 @@ impl Default for AppConfig {
             max_processes: 80,
             theme: Theme::Default,
             show_full_command: true,
+            compact_mode: false,
+            alert_thresholds: AlertThresholds::default(),
             visible_columns: Self::default_visible_columns(),
             filter_presets: Vec::new(),
             sort_profiles: Self::default_sort_profiles(),
@@ -231,6 +295,7 @@ impl AppConfig {
         if self.sort_profiles.is_empty() {
             self.sort_profiles = Self::default_sort_profiles();
         }
+        self.alert_thresholds = self.alert_thresholds.clamp();
         self.refresh_interval_ms = self.refresh_interval_ms.clamp(250, 2500).max(250).min(2500);
         self.max_processes = self.max_processes.max(10).min(250);
     }
@@ -349,8 +414,11 @@ struct CliOptions {
     refresh_interval_ms: Option<u64>,
     max_processes: Option<usize>,
     show_full_command: Option<bool>,
+    compact_mode: Option<bool>,
     filter: Option<String>,
     sort_mode: Option<SortMode>,
+    export_path: Option<PathBuf>,
+    import_path: Option<PathBuf>,
 }
 
 impl CliOptions {
@@ -404,11 +472,25 @@ impl CliOptions {
                 }
                 "--show-full-command" => options.show_full_command = Some(true),
                 "--hide-full-command" => options.show_full_command = Some(false),
+                "--compact" => options.compact_mode = Some(true),
+                "--no-compact" => options.compact_mode = Some(false),
                 "--filter" => {
                     let value = args
                         .next()
                         .ok_or_else(|| "--filter requires a query".to_string())?;
                     options.filter = Some(value.as_ref().to_string());
+                }
+                "--import" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| "--import requires a path".to_string())?;
+                    options.import_path = Some(PathBuf::from(value.as_ref()));
+                }
+                "--export" => {
+                    let value = args
+                        .next()
+                        .ok_or_else(|| "--export requires a path".to_string())?;
+                    options.export_path = Some(PathBuf::from(value.as_ref()));
                 }
                 "--sort" | "--sort-mode" => {
                     let value = args
@@ -427,7 +509,7 @@ impl CliOptions {
                 }
                 "--help" | "-h" => {
                     return Err(
-                        "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command]".to_string(),
+                        "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]".to_string(),
                     )
                 }
                 _ if arg.starts_with("--") => {
@@ -464,6 +546,30 @@ impl ProcessItem {
         let minutes = (seconds % 3_600) / 60;
         let secs = seconds % 60;
         format!("{}d {:02}h {:02}m {:02}s", days, hours, minutes, secs)
+    }
+
+    pub fn severity_with_thresholds(
+        &self,
+        total_memory_mb: u64,
+        thresholds: AlertThresholds,
+    ) -> ProcessSeverity {
+        let memory_pct = if total_memory_mb == 0 {
+            0.0
+        } else {
+            (self.mem_mb as f64 / total_memory_mb as f64) * 100.0
+        };
+
+        if self.cpu >= thresholds.critical_cpu
+            || memory_pct >= thresholds.critical_memory_pct as f64
+        {
+            ProcessSeverity::Critical
+        } else if self.cpu >= thresholds.warning_cpu
+            || memory_pct >= thresholds.warning_memory_pct as f64
+        {
+            ProcessSeverity::Warning
+        } else {
+            ProcessSeverity::Normal
+        }
     }
 }
 
@@ -557,16 +663,26 @@ impl App {
         if let Some(show_full_command) = options.show_full_command {
             app.config.show_full_command = show_full_command;
         }
+        if let Some(compact_mode) = options.compact_mode {
+            app.config.compact_mode = compact_mode;
+        }
         if let Some(filter) = options.filter {
             app.query = filter;
         }
         if let Some(sort_mode) = options.sort_mode {
             app.sort_mode = sort_mode;
         }
+        if let Some(export_path) = options.export_path {
+            app.export_config(export_path.clone())
+                .map_err(|error| format!("failed to export config: {error}"))?;
+        }
+        if let Some(import_path) = options.import_path {
+            app.import_config(import_path)
+                .map_err(|error| format!("failed to import config: {error}"))?;
+        }
         app.config.apply_defaults();
         Ok(app)
     }
-
     pub fn load_from_file(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref().to_path_buf();
         let config = AppConfig::load_from_file(&path)?;
@@ -729,6 +845,44 @@ impl App {
         self.config.toggle_column(column);
     }
 
+    pub fn toggle_visible_column_by_index(&mut self, index: usize) {
+        let columns = self.config.visible_columns.clone();
+        let column = match columns.get(index).copied() {
+            Some(column) => column,
+            None => return,
+        };
+        self.config.toggle_column(column);
+    }
+
+    pub fn apply_quick_filter(&mut self, index: usize) -> bool {
+        let preset = self
+            .config
+            .filter_presets
+            .get(index)
+            .map(|preset| preset.query.clone());
+        match preset {
+            Some(query) => {
+                self.query = query;
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn toggle_compact_mode(&mut self) {
+        self.config.compact_mode = !self.config.compact_mode;
+    }
+
+    pub fn export_config(&self, path: impl AsRef<Path>) -> io::Result<()> {
+        self.config.save_to_file(path)
+    }
+
+    pub fn import_config(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
+        let config = AppConfig::load_from_file(path)?;
+        self.config = config;
+        Ok(())
+    }
+
     pub fn toggle_focus(&mut self) {
         self.focused_block = match self.focused_block {
             FocusedBlock::CommandPalette => FocusedBlock::CpuRam,
@@ -770,8 +924,8 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::{
-        App, AppConfig, DisplayColumn, FilterPreset, FocusedBlock, ProcessItem, SortMode,
-        SortProfile, Theme,
+        AlertThresholds, App, AppConfig, DisplayColumn, FilterPreset, FocusedBlock, ProcessItem,
+        SortMode, SortProfile, Theme,
     };
     use std::{
         fs,
@@ -798,6 +952,22 @@ mod tests {
             .unwrap_or_default()
             .as_nanos();
         std::env::temp_dir().join(format!("{name}-{nanos}.json"))
+    }
+
+    #[test]
+    fn alert_thresholds_keep_critical_values_above_warning_values() {
+        let thresholds = AlertThresholds {
+            warning_cpu: 80.0,
+            critical_cpu: 40.0,
+            warning_memory_pct: 75.0,
+            critical_memory_pct: 55.0,
+        }
+        .clamp();
+
+        assert_eq!(thresholds.warning_cpu, 80.0);
+        assert_eq!(thresholds.critical_cpu, 80.0);
+        assert_eq!(thresholds.warning_memory_pct, 75.0);
+        assert_eq!(thresholds.critical_memory_pct, 75.0);
     }
 
     #[test]
@@ -914,6 +1084,8 @@ mod tests {
             max_processes: 12,
             theme: Theme::Solarized,
             show_full_command: false,
+            compact_mode: false,
+            alert_thresholds: AlertThresholds::default(),
             visible_columns: AppConfig::default_visible_columns(),
             filter_presets: Vec::new(),
             sort_profiles: AppConfig::default_sort_profiles(),
@@ -1013,6 +1185,7 @@ mod tests {
         original.max_processes = 24;
         original.theme = Theme::Solarized;
         original.show_full_command = false;
+        original.compact_mode = true;
         original.visible_columns =
             vec![DisplayColumn::Pid, DisplayColumn::Name, DisplayColumn::Cpu];
         original.filter_presets = vec![FilterPreset {
@@ -1030,6 +1203,7 @@ mod tests {
         assert_eq!(loaded.max_processes, 24);
         assert_eq!(loaded.theme, Theme::Solarized);
         assert!(!loaded.show_full_command);
+        assert!(loaded.compact_mode);
         assert_eq!(
             loaded.visible_columns,
             vec![DisplayColumn::Pid, DisplayColumn::Name, DisplayColumn::Cpu]
@@ -1038,6 +1212,31 @@ mod tests {
         assert_eq!(loaded.sort_profiles[0].sort_mode, SortMode::Memory);
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn compact_mode_and_quick_filters_are_applied_from_config() {
+        let mut app = App::new();
+        app.config.filter_presets = vec![
+            FilterPreset {
+                name: "db".to_string(),
+                query: "postgres".to_string(),
+            },
+            FilterPreset {
+                name: "web".to_string(),
+                query: "nginx".to_string(),
+            },
+        ];
+
+        assert!(!app.config.compact_mode);
+        app.toggle_compact_mode();
+        assert!(app.config.compact_mode);
+
+        assert!(app.apply_quick_filter(0));
+        assert_eq!(app.query, "postgres");
+        assert!(app.apply_quick_filter(1));
+        assert_eq!(app.query, "nginx");
+        assert!(!app.apply_quick_filter(99));
     }
 
     #[test]

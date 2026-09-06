@@ -25,6 +25,11 @@ pub fn draw(f: &mut Frame, app: &App) {
         _ if app.query.is_empty() => " Command Palette  (/) filter ".to_string(),
         _ => format!(" Filter: {} ", app.query),
     };
+    let compact_suffix = if app.config.compact_mode {
+        "  COMPACT "
+    } else {
+        ""
+    };
     let border_color = if app.input_mode == InputMode::Search
         || app.focused_block == FocusedBlock::CommandPalette
     {
@@ -137,10 +142,15 @@ pub fn draw(f: &mut Frame, app: &App) {
         palette.text,
     );
 
-    let table_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
-        .split(chunks[3]);
+    let table_chunks = if app.config.compact_mode {
+        vec![chunks[3]]
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
+            .split(chunks[3])
+            .to_vec()
+    };
 
     let columns = if app.config.visible_columns.is_empty() {
         crate::app::AppConfig::default_visible_columns()
@@ -223,19 +233,21 @@ pub fn draw(f: &mut Frame, app: &App) {
         .column_spacing(1);
     f.render_widget(table, table_chunks[0]);
 
-    let detail_title = if app.focused_block == FocusedBlock::ProcessDetails {
-        " Process details "
-    } else {
-        " Details "
-    };
-    render_process_details(
-        f,
-        table_chunks[1],
-        app.selected_process_info(),
-        detail_title,
-        app.focused_block == FocusedBlock::ProcessDetails,
-        palette,
-    );
+    if !app.config.compact_mode {
+        let detail_title = if app.focused_block == FocusedBlock::ProcessDetails {
+            " Process details "
+        } else {
+            " Details "
+        };
+        render_process_details(
+            f,
+            table_chunks[1],
+            app.selected_process_info(),
+            detail_title,
+            app.focused_block == FocusedBlock::ProcessDetails,
+            palette,
+        );
+    }
 
     let footer = Paragraph::new(Line::from(vec![
         Span::styled("Tab", Style::default().add_modifier(Modifier::BOLD)),
@@ -248,6 +260,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         Span::raw(" kill  "),
         Span::styled("Space", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" pause  "),
+        Span::styled("z", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(" compact  "),
         Span::styled("r", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" refresh  "),
         Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
@@ -258,12 +272,13 @@ pub fn draw(f: &mut Frame, app: &App) {
         Span::raw(" quit  "),
         Span::styled(
             format!(
-                "{}  {}s ago  {}  {}ms  {}",
+                "{}  {}s ago  {}  {}ms  {}{}",
                 app.status(),
                 app.system_state.refreshed_at.elapsed().as_secs(),
                 app.config.theme_name(),
                 app.config.refresh_interval_ms,
                 app.config.max_processes,
+                compact_suffix,
             ),
             Style::default().fg(palette.footer),
         ),
@@ -375,8 +390,10 @@ fn render_help(f: &mut Frame, palette: crate::app::ThemePalette) {
         Line::from("s                 Cycle sort: CPU, memory, name, PID, threads"),
         Line::from("c / m / n / p / t Sort directly by CPU, memory, name, PID, threads"),
         Line::from("r                 Cycle refresh rate for telemetry"),
+        Line::from("z                 Toggle compact mode"),
         Line::from("T                 Cycle the UI theme"),
         Line::from("[ / ]             Adjust tracked process display count"),
+        Line::from("1-9               Apply quick filter presets or toggle quick columns"),
         Line::from("x                 Request termination of selected process"),
         Line::from("Space             Pause or resume telemetry updates"),
         Line::from("q                 Quit; Esc closes dialogs"),
