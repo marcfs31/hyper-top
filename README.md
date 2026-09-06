@@ -111,6 +111,32 @@ Each tagged release automatically builds and publishes installation bundles for:
 - macOS: `hyper-top-macos-aarch64.tar.gz` or `x86_64` depending on runner architecture
 - Windows: `hyper-top-windows-x86_64.zip`
 
+### Quick install snippets
+
+Linux/macOS (extract and run from the bundle):
+
+```bash
+curl -L "https://github.com/marcfs31/hyper-top/releases/download/v0.7.0/hyper-top-linux-x86_64.tar.gz" -o hyper-top-linux-x86_64.tar.gz
+mkdir -p hyper-top && tar -xzf hyper-top-linux-x86_64.tar.gz -C hyper-top --strip-components=1
+cd hyper-top && ./hyper-top --help
+```
+
+macOS (ARM64):
+
+```bash
+curl -L "https://github.com/marcfs31/hyper-top/releases/download/v0.7.0/hyper-top-macos-aarch64.tar.gz" -o hyper-top-macos-aarch64.tar.gz
+mkdir -p hyper-top && tar -xzf hyper-top-macos-aarch64.tar.gz -C hyper-top --strip-components=1
+cd hyper-top && ./hyper-top --help
+```
+
+Windows (PowerShell):
+
+```powershell
+Invoke-WebRequest "https://github.com/marcfs31/hyper-top/releases/download/v0.7.0/hyper-top-windows-x86_64.zip" -OutFile "hyper-top-windows-x86_64.zip"
+Expand-Archive -Path "hyper-top-windows-x86_64.zip" -DestinationPath ".\hyper-top" -Force
+.\hyper-top\hyper-top.exe --help
+```
+
 Bundle generation is handled by:
 
 ```bash
