@@ -31,7 +31,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(layout_constraints)
-        .split(f.size());
+        .split(f.area());
 
     let palette_title = match app.input_mode {
         InputMode::Search => format!(" Search: {}_ ", app.query),
@@ -805,7 +805,7 @@ fn format_core_usage_chart(values: &[f32]) -> String {
 
 fn render_help(f: &mut Frame, app: &App) {
     let palette = app.config.theme.palette();
-    let area = centered_rect(72, 70, f.size());
+    let area = centered_rect(72, 70, f.area());
     f.render_widget(Clear, area);
     let help = Paragraph::new(vec![
         Line::from(Span::styled(
@@ -852,7 +852,7 @@ fn render_help(f: &mut Frame, app: &App) {
 }
 
 fn render_confirm(f: &mut Frame, pid: Option<u32>, palette: crate::app::ThemePalette) {
-    let area = centered_rect(60, 25, f.size());
+    let area = centered_rect(60, 25, f.area());
     f.render_widget(Clear, area);
     let text = format!(
         "Terminate PID {}?\n\n[y] confirm    [n] cancel",
