@@ -9,6 +9,12 @@ It provides:
 - customizable refresh cadence, themes, and visible columns
 - persistent configuration support via JSON or TOML files
 
+## Screenshots
+
+![hyper-top dashboard](docs/screenshots/hyper-top-dashboard.png)
+
+![hyper-top compact mode](docs/screenshots/hyper-top-compact.png)
+
 ## Quick start
 
 From the project root:
