@@ -73,6 +73,7 @@ pub fn spawn_telemetry_engine(
                         status: format_process_status(proc.status()),
                         threads: proc.tasks().map_or(0, |tasks| tasks.len()),
                         parent_pid: proc.parent().map_or(0, |parent| parent.as_u32()),
+                        runtime: Duration::from_secs(proc.run_time()),
                     }
                 })
                 .collect();

@@ -453,6 +453,18 @@ pub struct ProcessItem {
     pub status: String,
     pub threads: usize,
     pub parent_pid: u32,
+    pub runtime: Duration,
+}
+
+impl ProcessItem {
+    pub fn runtime_label(&self) -> String {
+        let seconds = self.runtime.as_secs();
+        let days = seconds / 86_400;
+        let hours = (seconds % 86_400) / 3_600;
+        let minutes = (seconds % 3_600) / 60;
+        let secs = seconds % 60;
+        format!("{}d {:02}h {:02}m {:02}s", days, hours, minutes, secs)
+    }
 }
 
 pub struct SystemState {
@@ -776,6 +788,7 @@ mod tests {
             status: "Run".to_string(),
             threads,
             parent_pid: 1,
+            runtime: std::time::Duration::from_secs(120),
         }
     }
 
@@ -979,6 +992,7 @@ mod tests {
             status: "run".to_string(),
             threads: 32,
             parent_pid: 1,
+            runtime: std::time::Duration::from_secs(3_600),
         }];
         app.selected_process = 0;
 
@@ -987,6 +1001,7 @@ mod tests {
         assert_eq!(info.status, "run");
         assert_eq!(info.threads, 32);
         assert_eq!(info.parent_pid, 1);
+        assert_eq!(info.runtime_label(), "0d 01h 00m 00s");
         assert_eq!(app.selected_pid(), Some(4301));
     }
 
