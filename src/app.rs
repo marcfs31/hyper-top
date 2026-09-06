@@ -305,7 +305,7 @@ impl AppConfig {
             self.sort_profiles = Self::default_sort_profiles();
         }
         self.alert_thresholds = self.alert_thresholds.clamp();
-        self.refresh_interval_ms = self.refresh_interval_ms.clamp(250, 2500).max(250).min(2500);
+        self.refresh_interval_ms = self.refresh_interval_ms.clamp(250, 2500);
         if self.max_processes != 0 {
             self.max_processes = self.max_processes.clamp(10, 250);
         }
@@ -995,7 +995,7 @@ impl App {
             return;
         }
         let next = self.config.max_processes as i32 + delta;
-        self.config.max_processes = next.max(10).min(250) as usize;
+        self.config.max_processes = next.clamp(10, 250) as usize;
     }
 
     pub fn cycle_process_limit(&mut self) {
@@ -1349,22 +1349,23 @@ mod tests {
     #[test]
     fn config_file_round_trip_persists_user_prefs() {
         let path = unique_temp_path("hyper-top-config");
-        let mut original = AppConfig::default();
-        original.refresh_interval_ms = 1500;
-        original.max_processes = 24;
-        original.theme = Theme::Solarized;
-        original.show_full_command = false;
-        original.compact_mode = true;
-        original.visible_columns =
-            vec![DisplayColumn::Pid, DisplayColumn::Name, DisplayColumn::Cpu];
-        original.filter_presets = vec![FilterPreset {
-            name: "postgres".to_string(),
-            query: "postgres".to_string(),
-        }];
-        original.sort_profiles = vec![SortProfile {
-            name: "Memory".to_string(),
-            sort_mode: SortMode::Memory,
-        }];
+        let original = AppConfig {
+            refresh_interval_ms: 1500,
+            max_processes: 24,
+            theme: Theme::Solarized,
+            show_full_command: false,
+            compact_mode: true,
+            visible_columns: vec![DisplayColumn::Pid, DisplayColumn::Name, DisplayColumn::Cpu],
+            filter_presets: vec![FilterPreset {
+                name: "postgres".to_string(),
+                query: "postgres".to_string(),
+            }],
+            sort_profiles: vec![SortProfile {
+                name: "Memory".to_string(),
+                sort_mode: SortMode::Memory,
+            }],
+            ..Default::default()
+        };
 
         original.save(&path).unwrap();
         let loaded = AppConfig::load(&path).unwrap();
@@ -1478,10 +1479,12 @@ mod tests {
     #[test]
     fn cli_args_override_config_defaults_and_load_files() {
         let path = unique_temp_path("hyper-top-cli");
-        let mut config = AppConfig::default();
-        config.theme = Theme::Solarized;
-        config.refresh_interval_ms = 1200;
-        config.max_processes = 30;
+        let config = AppConfig {
+            theme: Theme::Solarized,
+            refresh_interval_ms: 1200,
+            max_processes: 30,
+            ..Default::default()
+        };
         config.save_to_file(&path).unwrap();
 
         let app = App::from_cli_args([

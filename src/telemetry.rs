@@ -37,7 +37,7 @@ pub fn spawn_telemetry_engine(
                         };
                     }
                     ProcessCommand::SetRefreshInterval(interval_ms) => {
-                        refresh_interval = Duration::from_millis(interval_ms.max(250).min(2500));
+                        refresh_interval = Duration::from_millis(interval_ms.clamp(250, 2500));
                     }
                 }
             }

@@ -185,10 +185,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             "{} logical cores",
             app.system_state.core_usage.len()
         )),
-        Line::from(format!(
-            "{}",
-            format_core_usage_chart(&app.system_state.core_usage)
-        )),
+        Line::from(format_core_usage_chart(&app.system_state.core_usage).to_string()),
     ])
     .wrap(Wrap { trim: true })
     .block(Block::default().borders(Borders::ALL).title(" Cores "))
@@ -565,6 +562,7 @@ fn render_info(
     f.render_widget(widget, area);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_process_details(
     f: &mut Frame,
     area: Rect,
