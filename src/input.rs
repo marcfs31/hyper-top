@@ -2,7 +2,7 @@ use crate::{
     app::{App, DisplayColumn, InputMode, SortMode},
     telemetry::ProcessCommand,
 };
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers, MouseEvent, MouseEventKind};
 use tokio::sync::mpsc;
 
 const HELP_SCROLL_END: usize = 64;
@@ -18,6 +18,7 @@ pub async fn handle_key(
             KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
                 app.input_mode = InputMode::Normal;
             }
+
             KeyCode::Up | KeyCode::Char('k') => app.help_scroll = app.help_scroll.saturating_sub(1),
             KeyCode::Down | KeyCode::Char('j') => {
                 app.help_scroll = app.help_scroll.saturating_add(1)
@@ -160,6 +161,7 @@ pub async fn handle_key(
                 _ => {}
             }
         }
+
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'x') && app.selected_pid().is_some() => {
             app.input_mode = InputMode::ConfirmKill;
         }
@@ -170,6 +172,26 @@ pub async fn handle_key(
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => app.sort_mode = SortMode::Name,
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'p') => app.sort_mode = SortMode::Pid,
         KeyCode::Char('t') => app.sort_mode = SortMode::Threads,
+        _ => {}
+    }
+}
+
+pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            if app.input_mode == InputMode::Help {
+                app.help_scroll = app.help_scroll.saturating_sub(3);
+            } else {
+                app.move_selection(-3);
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if app.input_mode == InputMode::Help {
+                app.help_scroll = app.help_scroll.saturating_add(3);
+            } else {
+                app.move_selection(3);
+            }
+        }
         _ => {}
     }
 }
@@ -234,5 +256,48 @@ mod tests {
         assert!(app.tree_view);
         handle_key(&mut app, KeyCode::Char('E'), KeyModifiers::SHIFT, &tx).await;
         assert!(!app.tree_view);
+    }
+
+    #[test]
+    fn mouse_wheel_moves_processes_and_help() {
+        let mut app = App::with_config(AppConfig::default());
+        let process = crate::app::ProcessItem {
+            pid: "1".to_string(),
+            name: "init".to_string(),
+            user: "root".to_string(),
+            uid: "0".to_string(),
+            command: "init".to_string(),
+            cpu: 0.0,
+            mem_mb: 1,
+            status: "run".to_string(),
+            threads: 1,
+            parent_pid: 0,
+            parent_user: "N/A".to_string(),
+            parent_uid: "N/A".to_string(),
+            runtime: std::time::Duration::ZERO,
+        };
+        app.system_state.processes = vec![process];
+        handle_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.selected_process, 0);
+
+        app.input_mode = InputMode::Help;
+        handle_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.help_scroll, 3);
     }
 }

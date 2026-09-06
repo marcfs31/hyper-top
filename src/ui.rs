@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Gauge, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Clear, Gauge, Paragraph, Row, Table, TableState, Wrap},
     Frame,
 };
 
@@ -458,7 +458,11 @@ pub fn draw(f: &mut Frame, app: &App) {
                 ),
         )
         .column_spacing(1);
-    f.render_widget(table, table_chunks[0]);
+    let mut table_state = TableState::default();
+    if !app.visible_processes().is_empty() {
+        table_state.select(Some(app.selected_process));
+    }
+    f.render_stateful_widget(table, table_chunks[0], &mut table_state);
 
     if !app.config.compact_mode {
         let detail_title = if app.focused_block == FocusedBlock::ProcessDetails {

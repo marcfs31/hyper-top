@@ -63,8 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                input::handle_key(&mut app, key.code, key.modifiers, &command_tx).await;
+            match event::read()? {
+                Event::Key(key) => {
+                    input::handle_key(&mut app, key.code, key.modifiers, &command_tx).await;
+                }
+                Event::Mouse(mouse) => input::handle_mouse(&mut app, mouse),
+                _ => {}
             }
         }
     }
