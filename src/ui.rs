@@ -356,7 +356,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             .map(|(column, width)| {
                 fit_cell(
                     if *column == DisplayColumn::Pid {
-                        "# | PID"
+                        "   # | PID"
                     } else {
                         column.label()
                     },

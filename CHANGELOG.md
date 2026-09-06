@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.9.1] - 2026-09-06
+### Fixed
+- Aligned the process number header with the right-aligned process numbers in the PID column.
+- Expanded `.gitignore` for Rust build output, packaging artifacts, editor metadata, local secrets, and coverage files.
+
 ## [0.9.0] - 2026-09-06
 ### Added
 - Five modern color palettes: Tokyo Night, Catppuccin, Nord, Dracula, and Gruvbox.
