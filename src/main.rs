@@ -9,7 +9,7 @@ use crossterm::event::{self, Event};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-const USAGE: &str = "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]";
+const USAGE: &str = "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight|tokyo-night|catppuccin|nord|dracula|gruvbox] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

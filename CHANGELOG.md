@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.9.0] - 2026-09-06
+### Added
+- Five modern color palettes: Tokyo Night, Catppuccin, Nord, Dracula, and Gruvbox.
+
+### Changed
+- Refined the existing Default, Solarized, and Midnight palettes with improved contrast and accent colors.
+- The `T` shortcut now cycles through all eight themes.
+
 ## [0.8.2] - 2026-09-06
 ### Changed
 - Added a clearly separated process number beside each PID in the Processes table.

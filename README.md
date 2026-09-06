@@ -99,6 +99,10 @@ visible_columns = ["pid", "name", "cpu", "memory", "threads"]
 - ?: help
 - q: quit
 
+Themes include refined Default, Solarized, and Midnight palettes plus modern
+Tokyo Night, Catppuccin, Nord, Dracula, and Gruvbox palettes. Select one
+persistently with `--theme`, for example `hyper-top --theme nord`.
+
 ## Install as a terminal app
 
 The project is ready for local installation via Cargo:
