@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FocusedBlock {
     CommandPalette,
     CpuRam,
@@ -8,7 +8,7 @@ pub enum FocusedBlock {
     ProcessDetails,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SortMode {
     Cpu,
     Memory,
@@ -17,7 +17,7 @@ pub enum SortMode {
     Threads,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputMode {
     Normal,
     Search,
@@ -175,7 +175,7 @@ impl App {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, ProcessItem, SortMode};
+    use super::{App, FocusedBlock, ProcessItem, SortMode};
 
     fn process(pid: &str, name: &str, cpu: f32, mem_mb: u64, threads: usize) -> ProcessItem {
         ProcessItem {
@@ -191,15 +191,15 @@ mod tests {
     }
 
     #[test]
-    fn filters_processes_by_name_pid_and_command() {
+    fn filters_processes_by_name_pid_and_command_case_insensitively() {
         let mut app = App::new();
         app.system_state.processes = vec![
             process("12", "terminal", 2.0, 100, 4),
             process("34", "database", 1.0, 200, 8),
         ];
-        app.system_state.processes[1].command = "postgres --cluster main".to_string();
+        app.system_state.processes[1].command = "Postgres --cluster main".to_string();
 
-        app.query = "term".to_string();
+        app.query = "TERM".to_string();
         assert_eq!(app.visible_processes().len(), 1);
         assert_eq!(app.visible_processes()[0].pid, "12");
 
@@ -208,6 +208,75 @@ mod tests {
 
         app.query = "34".to_string();
         assert_eq!(app.visible_processes()[0].pid, "34");
+
+        app.query.clear();
+        assert_eq!(app.visible_processes().len(), 2);
+    }
+
+    #[test]
+    fn selection_moves_within_bounds_across_list() {
+        let mut app = App::new();
+        app.system_state.processes = vec![
+            process("10", "alpha", 20.0, 200, 4),
+            process("20", "beta", 15.0, 400, 13),
+            process("30", "gamma", 10.0, 800, 9),
+        ];
+
+        app.selected_process = 0;
+        app.move_selection(1);
+        assert_eq!(app.selected_process, 1);
+
+        app.move_selection(10);
+        assert_eq!(app.selected_process, 2);
+
+        app.move_selection(-99);
+        assert_eq!(app.selected_process, 0);
+
+        app.selected_process = 5;
+        app.move_selection(1);
+        assert_eq!(app.selected_process, 2);
+    }
+
+    #[test]
+    fn cycle_sort_advances_modes_and_resets_selection() {
+        let mut app = App::new();
+        app.sort_mode = SortMode::Cpu;
+        app.selected_process = 2;
+
+        app.cycle_sort();
+        assert_eq!(app.sort_mode, SortMode::Memory);
+        assert_eq!(app.selected_process, 0);
+
+        app.cycle_sort();
+        assert_eq!(app.sort_mode, SortMode::Name);
+
+        app.cycle_sort();
+        assert_eq!(app.sort_mode, SortMode::Pid);
+
+        app.cycle_sort();
+        assert_eq!(app.sort_mode, SortMode::Threads);
+
+        app.cycle_sort();
+        assert_eq!(app.sort_mode, SortMode::Cpu);
+    }
+
+    #[test]
+    fn toggle_focus_cycles_through_blocks() {
+        let mut app = App::new();
+
+        assert_eq!(app.focused_block, FocusedBlock::ProcessTable);
+
+        app.toggle_focus();
+        assert_eq!(app.focused_block, FocusedBlock::ProcessDetails);
+
+        app.toggle_focus();
+        assert_eq!(app.focused_block, FocusedBlock::CommandPalette);
+
+        app.toggle_focus();
+        assert_eq!(app.focused_block, FocusedBlock::CpuRam);
+
+        app.toggle_focus();
+        assert_eq!(app.focused_block, FocusedBlock::ProcessTable);
     }
 
     #[test]
@@ -226,5 +295,62 @@ mod tests {
         app.sort_mode = SortMode::Threads;
         app.selected_process = 0;
         assert_eq!(app.visible_processes()[0].name, "large");
+    }
+
+    #[test]
+    fn sorts_by_cpu_name_and_pid() {
+        let mut app = App::new();
+        app.system_state.processes = vec![
+            process("20", "zebra", 30.0, 1000, 3),
+            process("10", "alpha", 80.0, 150, 7),
+            process("30", "beta", 50.0, 400, 10),
+        ];
+
+        app.sort_mode = SortMode::Cpu;
+        let cpu_order: Vec<_> = app
+            .visible_processes()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(cpu_order, vec!["alpha", "beta", "zebra"]);
+
+        app.sort_mode = SortMode::Name;
+        let name_order: Vec<_> = app
+            .visible_processes()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+        assert_eq!(name_order, vec!["alpha", "beta", "zebra"]);
+
+        app.sort_mode = SortMode::Pid;
+        let pid_order: Vec<_> = app
+            .visible_processes()
+            .iter()
+            .map(|p| p.pid.as_str())
+            .collect();
+        assert_eq!(pid_order, vec!["10", "20", "30"]);
+    }
+
+    #[test]
+    fn selected_process_info_exposes_full_metadata() {
+        let mut app = App::new();
+        app.system_state.processes = vec![ProcessItem {
+            pid: "4301".to_string(),
+            name: "gnome-shell".to_string(),
+            command: "gnome-shell --replace".to_string(),
+            cpu: 12.5,
+            mem_mb: 2048,
+            status: "run".to_string(),
+            threads: 32,
+            parent_pid: 1,
+        }];
+        app.selected_process = 0;
+
+        let info = app.selected_process_info().unwrap();
+        assert_eq!(info.command, "gnome-shell --replace");
+        assert_eq!(info.status, "run");
+        assert_eq!(info.threads, 32);
+        assert_eq!(info.parent_pid, 1);
+        assert_eq!(app.selected_pid(), Some(4301));
     }
 }

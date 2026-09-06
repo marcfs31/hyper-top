@@ -124,3 +124,23 @@ fn format_process_status(status: ProcessStatus) -> String {
         _ => "unknown".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::format_process_status;
+    use sysinfo::ProcessStatus;
+
+    #[test]
+    fn formats_process_status_labels_for_common_states() {
+        assert_eq!(format_process_status(ProcessStatus::Idle), "idle");
+        assert_eq!(format_process_status(ProcessStatus::Run), "run");
+        assert_eq!(format_process_status(ProcessStatus::Sleep), "sleep");
+        assert_eq!(format_process_status(ProcessStatus::Stop), "stop");
+        assert_eq!(format_process_status(ProcessStatus::Zombie), "zombie");
+        assert_eq!(format_process_status(ProcessStatus::Tracing), "tracing");
+        assert_eq!(format_process_status(ProcessStatus::Dead), "dead");
+        assert_eq!(format_process_status(ProcessStatus::Wakekill), "wakekill");
+        assert_eq!(format_process_status(ProcessStatus::Waking), "waking");
+        assert_eq!(format_process_status(ProcessStatus::Parked), "parked");
+    }
+}

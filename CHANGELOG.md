@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.4.0] - 2026-09-06
+### Added
+- Comprehensive automated regression tests covering process selection, filtering, sorting, focus toggling, and process metadata handling.
+- Dedicated telemetry validation checks for common process status states.
+
+### Changed
+- Hardened selection and metadata flows to maintain reliable behavior during process list updates.
+- Improved test coverage and reliability around sorting and filtering interactions.
+- Bumped the package version to `0.4.0` to reflect the stability and testability milestone.
+
+## [0.3.0] - 2026-09-06
+### Added
+- New automated tests for filtering, sorting, selection boundaries, and focus cycling.
+- Extra guardrails around process metadata visibility and selection state.
+
+### Changed
+- Tightened the reliability of app state transitions between filter, sort, and focus modes.
+- Bumped the package version to `0.3.0` to reflect the testing and reliability improvements.
+
 ## [0.2.0] - 2026-09-06
 ### Added
 - Full-featured TUI process dashboard with richer system health summaries.
