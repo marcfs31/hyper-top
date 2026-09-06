@@ -11,7 +11,7 @@ This repository is a Rust TUI monitoring tool. All contributors, including AI as
 - Use semantic versioning for every release.
 - Keep the package version aligned with the project state in `Cargo.toml`.
 - Record notable user-visible changes in `CHANGELOG.md`.
-- Current version: `0.6.0`.
+- Current version: `0.6.1`.
 
 ## Required workflow
 1. Read the relevant files and tests before editing.

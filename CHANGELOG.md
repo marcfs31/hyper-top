@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.6.1] - 2026-09-06
+### Added
+- Desktop launchers for Linux, macOS, and Windows to make the app easy to start from the OS shell or desktop environment.
+- Platform-specific launch wrappers alongside the generic terminal launcher assets.
+
+### Changed
+- Improved the install-friendly developer experience by providing OS-native entry points.
+- Bumped the package version to `0.6.1` to reflect the cross-platform launcher milestone.
+
 ## [0.6.0] - 2026-09-06
 ### Added
 - Installation and launcher support for running the app as a terminal command or desktop launch entry.

@@ -97,13 +97,48 @@ cargo install --path . --locked --force
 
 This installs a `hyper-top` command on your PATH.
 
-To also expose a desktop-launch entry, use the provided launcher file:
+## Desktop launchers by OS
+
+### Linux
+
+Use the desktop launcher:
 
 ```bash
-./dist/hyper-top.desktop
+./dist/linux/hyper-top.desktop
 ```
 
-A desktop launcher file is included at `dist/hyper-top.desktop` for a terminal-based app entry. If your desktop environment supports `.desktop` launchers, copy it to a suitable location such as `~/.local/share/applications/` and update the `Exec` target if needed.
+To register it in your desktop environment, copy it to a launcher directory such as:
+
+```bash
+mkdir -p ~/.local/share/applications
+cp ./dist/linux/hyper-top.desktop ~/.local/share/applications/
+```
+
+### macOS
+
+Use the double-click launcher:
+
+```bash
+./dist/macos/hyper-top.command
+```
+
+This opens a terminal window and runs the app. If the cargo-installed binary is on your PATH, it will launch directly; otherwise it falls back to the repo-local `cargo run` entry point.
+
+### Windows
+
+Use either launcher:
+
+```powershell
+./dist/windows/hyper-top.cmd
+```
+
+or:
+
+```powershell
+./dist/windows/hyper-top.ps1
+```
+
+These launch the app in a terminal window and prefer the installed `hyper-top` command if available.
 
 ## Notes
 
