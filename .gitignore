@@ -1,1 +1,3 @@
 /target
+/.release-stage
+/dist/releases

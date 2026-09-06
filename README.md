@@ -17,6 +17,12 @@ From the project root:
 cargo run
 ```
 
+Print the installed app version:
+
+```bash
+hyper-top --version
+```
+
 Or install it as a command globally:
 
 ```bash
@@ -96,6 +102,24 @@ cargo install --path . --locked --force
 ```
 
 This installs a `hyper-top` command on your PATH.
+
+## GitHub release artifacts by OS
+
+Each tagged release automatically builds and publishes installation bundles for:
+
+- Linux: `hyper-top-linux-x86_64.tar.gz`
+- macOS: `hyper-top-macos-aarch64.tar.gz` or `x86_64` depending on runner architecture
+- Windows: `hyper-top-windows-x86_64.zip`
+
+Bundle generation is handled by:
+
+```bash
+python3 scripts/package_release.py --platform linux
+python3 scripts/package_release.py --platform macos
+python3 scripts/package_release.py --platform windows
+```
+
+The same packaging step is run by the GitHub Actions release workflow in `.github/workflows/release.yml` whenever a version tag like `v0.7.0` is pushed.
 
 ## Desktop launchers by OS
 

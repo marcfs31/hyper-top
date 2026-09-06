@@ -15,7 +15,13 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut app = match App::from_cli_args(std::env::args().skip(1)) {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--version" || arg == "-V") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
+    let mut app = match App::from_cli_args(args) {
         Ok(app) => app,
         Err(error) => {
             eprintln!("Failed to parse CLI arguments: {error}");

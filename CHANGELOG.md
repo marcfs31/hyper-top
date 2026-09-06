@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.7.0] - 2026-09-06
+### Added
+- Automated GitHub release packaging for Linux, macOS, and Windows installation bundles.
+- One-click archive generation for each supported platform via a reusable release packaging script.
+- A `--version`/`-V` flag so the installed binary reports its release version directly.
+
+### Changed
+- Updated the release process to publish OS-specific install artifacts with every version tag.
+- Improved installability and distribution workflows for users looking for a packaged binary instead of a source-only install.
+- Bumped the package version to `0.7.0` to reflect the release-packaging milestone.
+
 ## [0.6.1] - 2026-09-06
 ### Added
 - Desktop launchers for Linux, macOS, and Windows to make the app easy to start from the OS shell or desktop environment.
