@@ -147,6 +147,18 @@ python3 scripts/package_release.py --platform windows
 
 The same packaging step is run by the GitHub Actions release workflow in `.github/workflows/release.yml` whenever a version tag like `v0.7.0` is pushed.
 
+## Headless verification on each OS
+
+For a quick smoke test in a pseudo-terminal environment, use the bundled script:
+
+```bash
+./scripts/verify-headless.sh
+```
+
+This script runs the project test suite and verifies the binary starts in headless mode. On a machine with Docker installed, it also builds a Linux container and runs the app inside it.
+
+The GitHub Actions workflow at `.github/workflows/verify-platforms.yml` runs the same smoke checks on Linux, macOS, and Windows runners when the repo is pushed to `master` or when manually triggered.
+
 ## Desktop launchers by OS
 
 ### Linux

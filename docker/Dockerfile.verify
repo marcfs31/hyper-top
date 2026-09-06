@@ -1,0 +1,8 @@
+FROM rust:1.85-bookworm
+
+WORKDIR /app
+COPY . .
+
+RUN cargo test --locked && cargo build --release
+
+CMD ["./target/release/hyper-top", "--version"]

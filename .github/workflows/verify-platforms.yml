@@ -1,0 +1,54 @@
+name: Verify platform smoke tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/**"
+      - ".github/workflows/verify-platforms.yml"
+
+jobs:
+  linux-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify in Linux container
+        run: |
+          docker build -f docker/Dockerfile.verify -t hyper-top-verify .
+          docker run --rm hyper-top-verify
+
+  native-matrix:
+    name: Native ${{ matrix.name }} smoke test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run smoke check
+        shell: bash
+        run: |
+          cargo test --locked
+          cargo build --release
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ./target/release/hyper-top.exe --version
+          else
+            ./target/release/hyper-top --version
+          fi
