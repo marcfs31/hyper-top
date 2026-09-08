@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Gauge, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Clear, Gauge, Paragraph, Row, Table, TableState, Wrap},
     Frame,
 };
 
@@ -59,7 +59,6 @@ pub fn draw(f: &mut Frame, app: &App) {
         }),
     ]))
     .wrap(Wrap { trim: true })
-    .scroll((app.help_scroll.min(16).min(u16::MAX as usize) as u16, 0))
     .block(
         Block::default()
             .borders(Borders::ALL)
@@ -349,30 +348,27 @@ pub fn draw(f: &mut Frame, app: &App) {
     } else {
         app.config.visible_columns.clone()
     };
+    let column_widths = responsive_column_widths(&columns, table_chunks[0].width);
     let header = Row::new(
         columns
             .iter()
-            .map(|column| column.label().to_string())
+            .zip(column_widths.iter())
+            .map(|(column, width)| {
+                fit_cell(
+                    if *column == DisplayColumn::Pid {
+                        "   # | PID"
+                    } else {
+                        column.label()
+                    },
+                    *width,
+                )
+            })
             .collect::<Vec<_>>(),
     )
     .style(Style::default().add_modifier(Modifier::BOLD));
-    let constraints: Vec<_> = columns
+    let constraints: Vec<_> = column_widths
         .iter()
-        .map(|column| match column {
-            DisplayColumn::Pid => Constraint::Length(8),
-            DisplayColumn::Name => Constraint::Percentage(40),
-            DisplayColumn::User => Constraint::Length(12),
-            DisplayColumn::Uid => Constraint::Length(8),
-            DisplayColumn::Cpu => Constraint::Percentage(15),
-            DisplayColumn::Memory => Constraint::Percentage(15),
-            DisplayColumn::Threads => Constraint::Length(8),
-            DisplayColumn::Status => Constraint::Length(10),
-            DisplayColumn::Command => Constraint::Percentage(35),
-            DisplayColumn::Parent => Constraint::Length(8),
-            DisplayColumn::ParentUser => Constraint::Length(12),
-            DisplayColumn::ParentUid => Constraint::Length(8),
-            DisplayColumn::Runtime => Constraint::Length(14),
-        })
+        .map(|width| Constraint::Length(*width))
         .collect();
     let total_memory_mb = (app.system_state.ram_total_gb * 1024.0) as u64;
     let rows: Vec<Row> = app
@@ -382,37 +378,46 @@ pub fn draw(f: &mut Frame, app: &App) {
         .map(|(index, process)| {
             let values = columns
                 .iter()
-                .map(|column| match column {
-                    DisplayColumn::Pid => process.pid.clone(),
-                    DisplayColumn::Name => process.name.clone(),
-                    DisplayColumn::User => process.user.clone(),
-                    DisplayColumn::Uid => process.uid.clone(),
-                    DisplayColumn::Cpu => format!("{:.1}%", process.cpu),
-                    DisplayColumn::Memory => {
+                .zip(column_widths.iter())
+                .map(|(column, width)| match (*column, *width) {
+                    (DisplayColumn::Pid, width) => {
+                        fit_cell(&format!("{:>4} | {}", index + 1, process.pid), width)
+                    }
+                    (DisplayColumn::Name, width) => fit_cell(
+                        &format!("{}{}", app.tree_prefix(process), process.name),
+                        width,
+                    ),
+                    (DisplayColumn::User, width) => fit_cell(&process.user, width),
+                    (DisplayColumn::Uid, width) => fit_cell(&process.uid, width),
+                    (DisplayColumn::Cpu, width) => fit_cell(&format!("{:.1}%", process.cpu), width),
+                    (DisplayColumn::Memory, width) => {
                         let memory_percent = if total_memory_mb == 0 {
                             0.0
                         } else {
                             process.mem_mb as f64 / total_memory_mb as f64 * 100.0
                         };
-                        format!("{} MB ({:.1}%)", process.mem_mb, memory_percent)
+                        fit_cell(
+                            &format!("{} MB ({:.1}%)", process.mem_mb, memory_percent),
+                            width,
+                        )
                     }
-                    DisplayColumn::Threads => process.threads.to_string(),
-                    DisplayColumn::Status => process.status.clone(),
-                    DisplayColumn::Parent => process.parent_pid.to_string(),
-                    DisplayColumn::ParentUser => process.parent_user.clone(),
-                    DisplayColumn::ParentUid => process.parent_uid.clone(),
-                    DisplayColumn::Runtime => process.runtime_label(),
-                    DisplayColumn::Command => {
+                    (DisplayColumn::Threads, width) => {
+                        fit_cell(&process.threads.to_string(), width)
+                    }
+                    (DisplayColumn::Status, width) => fit_cell(&process.status, width),
+                    (DisplayColumn::Parent, width) => {
+                        fit_cell(&process.parent_pid.to_string(), width)
+                    }
+                    (DisplayColumn::ParentUser, width) => fit_cell(&process.parent_user, width),
+                    (DisplayColumn::ParentUid, width) => fit_cell(&process.parent_uid, width),
+                    (DisplayColumn::Runtime, width) => fit_cell(&process.runtime_label(), width),
+                    (DisplayColumn::Command, width) => {
                         if app.config.show_full_command {
-                            process.command.clone()
+                            fit_cell(&process.command, width)
                         } else {
                             let max = 24usize;
                             let summary = process.command.trim();
-                            if summary.len() <= max {
-                                summary.to_string()
-                            } else {
-                                format!("{}...", &summary[..max])
-                            }
+                            fit_cell(summary, (width as usize).min(max) as u16)
                         }
                     }
                 })
@@ -433,7 +438,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         format!("limit:{}", app.config.max_processes)
     };
     let table_title = format!(
-        " Processes ({})  {}{} sort:{}  {} ",
+        " Processes ({})  {}{}{} sort:{}  {} ",
         app.visible_processes().len(),
         limit_label,
         if app.expanded_process_view {
@@ -441,6 +446,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         } else {
             ""
         },
+        if app.tree_view { "  TREE" } else { "" },
         sort_name(app.sort_mode),
         if app.query.is_empty() {
             "all"
@@ -463,7 +469,11 @@ pub fn draw(f: &mut Frame, app: &App) {
                 ),
         )
         .column_spacing(1);
-    f.render_widget(table, table_chunks[0]);
+    let mut table_state = TableState::default();
+    if !app.visible_processes().is_empty() {
+        table_state.select(Some(app.selected_process));
+    }
+    f.render_stateful_widget(table, table_chunks[0], &mut table_state);
 
     if !app.config.compact_mode {
         let detail_title = if app.focused_block == FocusedBlock::ProcessDetails {
@@ -482,6 +492,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             app.focused_block == FocusedBlock::ProcessDetails,
             palette,
             &app.system_state,
+            app.details_scroll,
         );
     }
 
@@ -500,6 +511,12 @@ pub fn draw(f: &mut Frame, app: &App) {
         } else {
             " normal view  "
         }),
+        Span::styled("e", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw(if app.tree_view {
+            " process tree  "
+        } else {
+            " flat process list  "
+        }),
         Span::styled("s", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" sort / 0 clear  "),
         Span::styled("x", Style::default().add_modifier(Modifier::BOLD)),
@@ -516,7 +533,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         Span::styled("r", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" refresh  "),
         Span::styled("T", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw(" theme  "),
+        Span::raw(" theme (8 palettes)  "),
         Span::styled("?", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw(" help  "),
         Span::styled("q", Style::default().add_modifier(Modifier::BOLD)),
@@ -573,6 +590,7 @@ fn render_process_details(
     focused: bool,
     palette: crate::app::ThemePalette,
     system: &crate::app::SystemState,
+    details_scroll: usize,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -678,7 +696,13 @@ fn render_process_details(
         )));
     }
 
+    let visible_height = area.height.saturating_sub(2) as usize;
+    let max_scroll = content.len().saturating_sub(visible_height);
     let widget = Paragraph::new(content)
+        .scroll((
+            details_scroll.min(max_scroll).min(u16::MAX as usize) as u16,
+            0,
+        ))
         .wrap(Wrap { trim: true })
         .block(block);
     f.render_widget(widget, area);
@@ -689,6 +713,80 @@ fn format_usage_bar(percent: u16, width: usize) -> String {
     let bar = "█".repeat(filled).to_string();
     let blank = "░".repeat(width.saturating_sub(filled));
     format!("[{}{}]", bar, blank)
+}
+
+fn column_min_width(column: DisplayColumn) -> u16 {
+    match column {
+        DisplayColumn::Pid => 12,
+        DisplayColumn::Uid | DisplayColumn::Parent | DisplayColumn::ParentUid => 6,
+        DisplayColumn::Cpu => 7,
+        DisplayColumn::Threads => 8,
+        DisplayColumn::Status => 8,
+        DisplayColumn::Name | DisplayColumn::User | DisplayColumn::ParentUser => 10,
+        DisplayColumn::Memory => 12,
+        DisplayColumn::Command => 16,
+        DisplayColumn::Runtime => 14,
+    }
+}
+
+fn responsive_column_widths(columns: &[DisplayColumn], table_width: u16) -> Vec<u16> {
+    if columns.is_empty() {
+        return Vec::new();
+    }
+    let gaps = columns.len().saturating_sub(1) as u16;
+    let available = table_width.saturating_sub(2).saturating_sub(gaps);
+    let mut widths: Vec<u16> = columns
+        .iter()
+        .map(|column| column_min_width(*column))
+        .collect();
+    if available < widths.iter().sum() {
+        while widths.iter().sum::<u16>() > available {
+            let Some(index) = widths
+                .iter()
+                .enumerate()
+                .filter(|(_, width)| **width > 1)
+                .max_by_key(|(_, width)| **width)
+                .map(|(index, _)| index)
+            else {
+                break;
+            };
+            widths[index] -= 1;
+        }
+    } else {
+        let mut remaining = available - widths.iter().sum::<u16>();
+        for (index, column) in columns.iter().enumerate() {
+            if remaining == 0 {
+                break;
+            }
+            let weight = matches!(column, DisplayColumn::Name | DisplayColumn::Command);
+            if weight {
+                widths[index] += remaining;
+                remaining = 0;
+            }
+        }
+        if remaining > 0 {
+            widths[0] += remaining;
+        }
+    }
+    widths.iter_mut().for_each(|width| *width = (*width).max(1));
+    widths
+}
+
+fn fit_cell(value: &str, width: u16) -> String {
+    let width = width as usize;
+    if width == 0 {
+        return String::new();
+    }
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= width {
+        return value.to_string();
+    }
+    if width <= 3 {
+        return chars.into_iter().take(width).collect();
+    }
+    let mut result: String = chars.into_iter().take(width - 3).collect();
+    result.push_str("...");
+    result
 }
 
 fn format_core_usage_chart(values: &[f32]) -> String {
@@ -728,10 +826,11 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("r                 Cycle refresh rate (250/500/900/1500/2500 ms)"),
         Line::from("a                 Reset refresh rate to automatic default (900 ms)"),
         Line::from("z                 Toggle compact mode"),
-        Line::from("T                 Cycle the UI theme"),
+        Line::from("T                 Cycle 8 themes: default, solarized, midnight, Tokyo Night, Catppuccin, Nord, Dracula, Gruvbox"),
         Line::from("[ / ], -/+, or { }  Decrease/increase process limit by 10"),
         Line::from("u                 Cycle limit: unlimited / 50 / 80 / 150"),
         Line::from("v / V             Toggle full-screen Processes + Details telemetry view"),
+        Line::from("e                 Toggle hierarchical process tree view"),
         Line::from("Home / End         Jump to first / last process"),
         Line::from("PageUp / PageDown   Move by one page of processes"),
         Line::from("1-6               Apply quick filter presets"),
@@ -741,6 +840,7 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("Space             Pause/resume all telemetry updates (not one process)"),
         Line::from("q                 Quit; Esc closes dialogs"),
     ])
+    .scroll((app.help_scroll.min(u16::MAX as usize) as u16, 0))
     .wrap(Wrap { trim: true })
     .block(
         Block::default()
@@ -818,5 +918,32 @@ fn usage_percent(used: f64, total: f64) -> f64 {
         0.0
     } else {
         (used / total * 100.0).clamp(0.0, 100.0)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn responsive_widths_fit_table_area() {
+        let columns = vec![
+            DisplayColumn::Pid,
+            DisplayColumn::Name,
+            DisplayColumn::User,
+            DisplayColumn::Memory,
+            DisplayColumn::Command,
+        ];
+        let widths = responsive_column_widths(&columns, 80);
+
+        assert_eq!(widths.len(), columns.len());
+        assert!(widths.iter().map(|width| *width as u32).sum::<u32>() + 4 <= 80);
+    }
+
+    #[test]
+    fn narrow_cells_are_truncated_without_overflow() {
+        assert_eq!(fit_cell("abcdefgh", 6), "abc...");
+        assert_eq!(fit_cell("abcdefgh", 3), "abc");
+        assert_eq!(fit_cell("abc", 6), "abc");
     }
 }

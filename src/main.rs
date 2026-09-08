@@ -9,7 +9,7 @@ use crossterm::event::{self, Event};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-const USAGE: &str = "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]";
+const USAGE: &str = "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight|tokyo-night|catppuccin|nord|dracula|gruvbox] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !app.paused {
             if let Ok(new_state) = rx.try_recv() {
                 app.system_state = new_state;
-                let count = app.filtered_processes().len();
+                let count = app.visible_processes().len();
                 if let Some(pid) = app.focused_pid {
                     if let Some(index) = app
                         .visible_processes()
@@ -63,8 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         if event::poll(Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                input::handle_key(&mut app, key.code, key.modifiers, &command_tx).await;
+            match event::read()? {
+                Event::Key(key) => {
+                    input::handle_key(&mut app, key.code, key.modifiers, &command_tx).await;
+                }
+                Event::Mouse(mouse) => input::handle_mouse(&mut app, mouse),
+                _ => {}
             }
         }
     }

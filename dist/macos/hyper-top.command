@@ -2,12 +2,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-cd "$ROOT_DIR"
+if [[ -x "$SCRIPT_DIR/hyper-top" ]]; then
+  exec "$SCRIPT_DIR/hyper-top" "$@"
+fi
 
 if command -v hyper-top >/dev/null 2>&1; then
   exec hyper-top "$@"
-else
-  exec cargo run -- "$@"
 fi
+
+echo "hyper-top binary not found next to this launcher or on PATH." >&2
+echo "Install it with: cargo install --path . --locked" >&2
+exit 1

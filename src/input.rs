@@ -2,10 +2,11 @@ use crate::{
     app::{App, DisplayColumn, InputMode, SortMode},
     telemetry::ProcessCommand,
 };
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers, MouseEvent, MouseEventKind};
 use tokio::sync::mpsc;
 
-const HELP_SCROLL_END: usize = 16;
+const HELP_SCROLL_END: usize = 64;
+const DETAILS_SCROLL_END: usize = 64;
 
 pub async fn handle_key(
     app: &mut App,
@@ -18,8 +19,11 @@ pub async fn handle_key(
             KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => {
                 app.input_mode = InputMode::Normal;
             }
-            KeyCode::Up => app.help_scroll = app.help_scroll.saturating_sub(1),
-            KeyCode::Down => app.help_scroll = app.help_scroll.saturating_add(1),
+
+            KeyCode::Up | KeyCode::Char('k') => app.help_scroll = app.help_scroll.saturating_sub(1),
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.help_scroll = app.help_scroll.saturating_add(1)
+            }
             KeyCode::PageUp => app.help_scroll = app.help_scroll.saturating_sub(8),
             KeyCode::PageDown => app.help_scroll = app.help_scroll.saturating_add(8),
             KeyCode::Home => app.help_scroll = 0,
@@ -133,11 +137,34 @@ pub async fn handle_key(
         }
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'u') => app.cycle_process_limit(),
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'v') => app.toggle_expanded_process_view(),
-        KeyCode::PageUp => app.move_selection(-10),
-        KeyCode::PageDown => app.move_selection(10),
-        KeyCode::Home => app.selected_process = 0,
+        KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'e') => app.toggle_tree_view(),
+        KeyCode::PageUp => {
+            if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(-8);
+            } else {
+                app.move_selection(-10);
+            }
+        }
+        KeyCode::PageDown => {
+            if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(8);
+            } else {
+                app.move_selection(10);
+            }
+        }
+        KeyCode::Home => {
+            if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.details_scroll = 0;
+            } else {
+                app.selected_process = 0;
+            }
+        }
         KeyCode::End => {
-            app.selected_process = app.filtered_processes().len().saturating_sub(1);
+            if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.details_scroll = DETAILS_SCROLL_END;
+            } else {
+                app.selected_process = app.visible_processes().len().saturating_sub(1);
+            }
         }
         KeyCode::Enter => app.toggle_process_focus(),
         KeyCode::Char('0') => {
@@ -159,16 +186,53 @@ pub async fn handle_key(
                 _ => {}
             }
         }
+
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'x') && app.selected_pid().is_some() => {
             app.input_mode = InputMode::ConfirmKill;
         }
-        KeyCode::Down | KeyCode::Char('j') => app.move_selection(1),
-        KeyCode::Up | KeyCode::Char('k') => app.move_selection(-1),
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(1);
+            } else {
+                app.move_selection(1);
+            }
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(-1);
+            } else {
+                app.move_selection(-1);
+            }
+        }
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'c') => app.sort_mode = SortMode::Cpu,
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'m') => app.sort_mode = SortMode::Memory,
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'n') => app.sort_mode = SortMode::Name,
         KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'p') => app.sort_mode = SortMode::Pid,
         KeyCode::Char('t') => app.sort_mode = SortMode::Threads,
+        _ => {}
+    }
+}
+
+pub fn handle_mouse(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            if app.input_mode == InputMode::Help {
+                app.help_scroll = app.help_scroll.saturating_sub(3);
+            } else if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(-3);
+            } else {
+                app.move_selection(-3);
+            }
+        }
+        MouseEventKind::ScrollDown => {
+            if app.input_mode == InputMode::Help {
+                app.help_scroll = app.help_scroll.saturating_add(3);
+            } else if app.focused_block == crate::app::FocusedBlock::ProcessDetails {
+                app.move_details_scroll(3);
+            } else {
+                app.move_selection(3);
+            }
+        }
         _ => {}
     }
 }
@@ -197,6 +261,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn details_focus_scrolls_with_navigation_keys() {
+        let mut app = App::with_config(AppConfig::default());
+        let tx = channel();
+        app.focused_block = crate::app::FocusedBlock::ProcessDetails;
+
+        handle_key(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.details_scroll, 1);
+        handle_key(&mut app, KeyCode::PageDown, KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.details_scroll, 9);
+        handle_key(&mut app, KeyCode::Home, KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.details_scroll, 0);
+    }
+
+    #[tokio::test]
+    async fn help_navigation_does_not_change_normal_selection() {
+        let mut app = App::with_config(AppConfig::default());
+        let tx = channel();
+
+        handle_key(&mut app, KeyCode::Char('?'), KeyModifiers::NONE, &tx).await;
+        handle_key(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx).await;
+        handle_key(&mut app, KeyCode::Char('j'), KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.help_scroll, 2);
+        assert_eq!(app.selected_process, 0);
+        handle_key(&mut app, KeyCode::Home, KeyModifiers::NONE, &tx).await;
+        assert_eq!(app.help_scroll, 0);
+    }
+
+    #[tokio::test]
     async fn refresh_and_limit_shortcuts_are_applied() {
         let mut app = App::with_config(AppConfig::default());
         app.config.max_processes = 80;
@@ -208,5 +300,73 @@ mod tests {
         assert_eq!(app.config.max_processes, 90);
         handle_key(&mut app, KeyCode::Char('u'), KeyModifiers::NONE, &tx).await;
         assert_eq!(app.config.max_processes, 0);
+    }
+
+    #[tokio::test]
+    async fn e_toggles_process_tree_view() {
+        let mut app = App::with_config(AppConfig::default());
+        let tx = channel();
+
+        handle_key(&mut app, KeyCode::Char('e'), KeyModifiers::NONE, &tx).await;
+        assert!(app.tree_view);
+        handle_key(&mut app, KeyCode::Char('E'), KeyModifiers::SHIFT, &tx).await;
+        assert!(!app.tree_view);
+    }
+
+    #[test]
+    fn mouse_wheel_moves_processes_and_help() {
+        let mut app = App::with_config(AppConfig::default());
+        let process = crate::app::ProcessItem {
+            pid: "1".to_string(),
+            name: "init".to_string(),
+            user: "root".to_string(),
+            uid: "0".to_string(),
+            command: "init".to_string(),
+            cpu: 0.0,
+            mem_mb: 1,
+            status: "run".to_string(),
+            threads: 1,
+            parent_pid: 0,
+            parent_user: "N/A".to_string(),
+            parent_uid: "N/A".to_string(),
+            runtime: std::time::Duration::ZERO,
+        };
+        app.system_state.processes = vec![process];
+        handle_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.selected_process, 0);
+
+        app.input_mode = InputMode::Help;
+        handle_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.help_scroll, 3);
+
+        app.input_mode = InputMode::Normal;
+        app.focused_block = crate::app::FocusedBlock::ProcessDetails;
+        handle_mouse(
+            &mut app,
+            MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            },
+        );
+        assert_eq!(app.details_scroll, 3);
+        assert_eq!(app.selected_process, 0);
     }
 }

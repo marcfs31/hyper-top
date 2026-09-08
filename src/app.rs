@@ -1,6 +1,7 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashMap, HashSet},
     fs, io,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -39,6 +40,11 @@ pub enum Theme {
     Default,
     Solarized,
     Midnight,
+    TokyoNight,
+    Catppuccin,
+    Nord,
+    Dracula,
+    Gruvbox,
 }
 
 impl Theme {
@@ -47,6 +53,11 @@ impl Theme {
             Self::Default => "DEFAULT",
             Self::Solarized => "SOLARIZED",
             Self::Midnight => "MIDNIGHT",
+            Self::TokyoNight => "TOKYO NIGHT",
+            Self::Catppuccin => "CATPPUCCIN",
+            Self::Nord => "NORD",
+            Self::Dracula => "DRACULA",
+            Self::Gruvbox => "GRUVBOX",
         }
     }
 
@@ -55,6 +66,11 @@ impl Theme {
             "default" => Some(Self::Default),
             "solarized" => Some(Self::Solarized),
             "midnight" => Some(Self::Midnight),
+            "tokyo-night" | "tokyonight" => Some(Self::TokyoNight),
+            "catppuccin" => Some(Self::Catppuccin),
+            "nord" => Some(Self::Nord),
+            "dracula" => Some(Self::Dracula),
+            "gruvbox" => Some(Self::Gruvbox),
             _ => None,
         }
     }
@@ -84,15 +100,70 @@ impl Theme {
                 footer: Color::LightYellow,
             },
             Self::Midnight => ThemePalette {
-                accent: Color::LightCyan,
-                muted: Color::Gray,
-                success: Color::Green,
-                warning: Color::LightRed,
-                memory: Color::Magenta,
-                text: Color::White,
-                selection_fg: Color::Black,
-                selection_bg: Color::LightCyan,
-                footer: Color::LightRed,
+                accent: Color::Rgb(125, 207, 255),
+                muted: Color::Rgb(86, 95, 137),
+                success: Color::Rgb(158, 206, 106),
+                warning: Color::Rgb(247, 118, 142),
+                memory: Color::Rgb(187, 154, 247),
+                text: Color::Rgb(192, 202, 245),
+                selection_fg: Color::Rgb(26, 27, 38),
+                selection_bg: Color::Rgb(125, 207, 255),
+                footer: Color::Rgb(224, 175, 104),
+            },
+            Self::TokyoNight => ThemePalette {
+                accent: Color::Rgb(122, 162, 247),
+                muted: Color::Rgb(86, 95, 137),
+                success: Color::Rgb(158, 206, 106),
+                warning: Color::Rgb(224, 175, 104),
+                memory: Color::Rgb(187, 154, 247),
+                text: Color::Rgb(169, 177, 214),
+                selection_fg: Color::Rgb(26, 27, 38),
+                selection_bg: Color::Rgb(125, 207, 255),
+                footer: Color::Rgb(242, 183, 196),
+            },
+            Self::Catppuccin => ThemePalette {
+                accent: Color::Rgb(137, 180, 250),
+                muted: Color::Rgb(108, 112, 134),
+                success: Color::Rgb(166, 227, 161),
+                warning: Color::Rgb(249, 226, 175),
+                memory: Color::Rgb(203, 166, 247),
+                text: Color::Rgb(205, 214, 244),
+                selection_fg: Color::Rgb(30, 30, 46),
+                selection_bg: Color::Rgb(137, 180, 250),
+                footer: Color::Rgb(245, 194, 231),
+            },
+            Self::Nord => ThemePalette {
+                accent: Color::Rgb(136, 192, 208),
+                muted: Color::Rgb(100, 112, 125),
+                success: Color::Rgb(163, 190, 140),
+                warning: Color::Rgb(235, 203, 139),
+                memory: Color::Rgb(180, 142, 173),
+                text: Color::Rgb(216, 222, 233),
+                selection_fg: Color::Rgb(46, 52, 64),
+                selection_bg: Color::Rgb(136, 192, 208),
+                footer: Color::Rgb(129, 161, 193),
+            },
+            Self::Dracula => ThemePalette {
+                accent: Color::Rgb(189, 147, 249),
+                muted: Color::Rgb(98, 94, 117),
+                success: Color::Rgb(80, 250, 123),
+                warning: Color::Rgb(241, 250, 140),
+                memory: Color::Rgb(255, 121, 198),
+                text: Color::Rgb(248, 248, 242),
+                selection_fg: Color::Rgb(40, 42, 54),
+                selection_bg: Color::Rgb(189, 147, 249),
+                footer: Color::Rgb(139, 233, 253),
+            },
+            Self::Gruvbox => ThemePalette {
+                accent: Color::Rgb(131, 165, 152),
+                muted: Color::Rgb(146, 131, 116),
+                success: Color::Rgb(184, 187, 38),
+                warning: Color::Rgb(250, 189, 47),
+                memory: Color::Rgb(211, 134, 155),
+                text: Color::Rgb(235, 219, 178),
+                selection_fg: Color::Rgb(40, 40, 40),
+                selection_bg: Color::Rgb(131, 165, 152),
+                footer: Color::Rgb(254, 128, 25),
             },
         }
     }
@@ -525,7 +596,7 @@ impl CliOptions {
                 }
                 "--help" | "-h" => {
                     return Err(
-                        "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]".to_string(),
+                        "Usage: hyper-top [--config PATH] [--theme default|solarized|midnight|tokyo-night|catppuccin|nord|dracula|gruvbox] [--refresh 900] [--limit 80] [--sort cpu|memory|name|pid|threads] [--filter QUERY] [--show-full-command|--hide-full-command] [--compact|--no-compact] [--import PATH] [--export PATH]".to_string(),
                     )
                 }
                 _ if arg.starts_with("--") => {
@@ -646,7 +717,9 @@ pub struct App {
     pub config_path: Option<PathBuf>,
     pub focused_pid: Option<u32>,
     pub expanded_process_view: bool,
+    pub tree_view: bool,
     pub help_scroll: usize,
+    pub details_scroll: usize,
 }
 
 impl App {
@@ -690,7 +763,9 @@ impl App {
             config_path: None,
             focused_pid: None,
             expanded_process_view: false,
+            tree_view: false,
             help_scroll: 0,
+            details_scroll: 0,
         }
     }
 
@@ -794,14 +869,75 @@ impl App {
                     let focused = processes.remove(focused_index);
                     processes.truncate(limit.saturating_sub(1));
                     processes.push(focused);
-                    return processes;
                 }
             }
         }
         if limit != 0 {
             processes.truncate(limit);
         }
+        if self.tree_view {
+            processes = self.tree_order(processes);
+        }
         processes
+    }
+
+    fn tree_order<'a>(&self, processes: Vec<&'a ProcessItem>) -> Vec<&'a ProcessItem> {
+        let ids: HashSet<u32> = processes
+            .iter()
+            .filter_map(|process| process.pid.parse().ok())
+            .collect();
+        let mut children: HashMap<u32, Vec<&ProcessItem>> = HashMap::new();
+        let mut roots = Vec::new();
+        for process in processes {
+            if let Ok(pid) = process.pid.parse::<u32>() {
+                if ids.contains(&process.parent_pid) {
+                    children
+                        .entry(process.parent_pid)
+                        .or_default()
+                        .push(process);
+                } else {
+                    roots.push(process);
+                }
+                if pid == process.parent_pid {
+                    roots.push(process);
+                }
+            } else {
+                roots.push(process);
+            }
+        }
+
+        let mut ordered = Vec::new();
+        let mut visited = HashSet::new();
+        for root in roots {
+            append_tree_node(root, &children, &mut visited, &mut ordered);
+        }
+        ordered
+    }
+
+    pub fn tree_prefix(&self, process: &ProcessItem) -> String {
+        if !self.tree_view {
+            return String::new();
+        }
+        let mut depth: usize = 0;
+        let mut parent_pid = process.parent_pid;
+        let mut visited = HashSet::new();
+        while parent_pid != 0 && depth < 8 && visited.insert(parent_pid) {
+            let Some(parent) = self
+                .system_state
+                .processes
+                .iter()
+                .find(|candidate| candidate.pid.parse::<u32>().ok() == Some(parent_pid))
+            else {
+                break;
+            };
+            depth += 1;
+            parent_pid = parent.parent_pid;
+        }
+        if depth == 0 {
+            String::new()
+        } else {
+            format!("{}|- ", "  ".repeat(depth.saturating_sub(1)))
+        }
     }
 
     pub fn selected_process_info(&self) -> Option<&ProcessItem> {
@@ -832,7 +968,7 @@ impl App {
     }
 
     pub fn move_selection(&mut self, delta: i32) {
-        let count = self.filtered_processes().len();
+        let count = self.visible_processes().len();
         if count == 0 {
             self.selected_process = 0;
             return;
@@ -1012,16 +1148,52 @@ impl App {
         self.expanded_process_view = !self.expanded_process_view;
     }
 
+    pub fn toggle_tree_view(&mut self) {
+        self.tree_view = !self.tree_view;
+        self.selected_process = 0;
+    }
+
+    pub fn move_details_scroll(&mut self, delta: i32) {
+        let next = self.details_scroll as i32 + delta;
+        self.details_scroll = next.max(0) as usize;
+    }
+
     pub fn cycle_theme(&mut self) {
         self.config.theme = match self.config.theme {
             Theme::Default => Theme::Solarized,
             Theme::Solarized => Theme::Midnight,
-            Theme::Midnight => Theme::Default,
+            Theme::Midnight => Theme::TokyoNight,
+            Theme::TokyoNight => Theme::Catppuccin,
+            Theme::Catppuccin => Theme::Nord,
+            Theme::Nord => Theme::Dracula,
+            Theme::Dracula => Theme::Gruvbox,
+            Theme::Gruvbox => Theme::Default,
         };
     }
 
     pub fn status(&self) -> &str {
         &self.system_state.message
+    }
+}
+
+fn append_tree_node<'a>(
+    process: &'a ProcessItem,
+    children: &HashMap<u32, Vec<&'a ProcessItem>>,
+    visited: &mut HashSet<u32>,
+    ordered: &mut Vec<&'a ProcessItem>,
+) {
+    let Ok(pid) = process.pid.parse::<u32>() else {
+        ordered.push(process);
+        return;
+    };
+    if !visited.insert(pid) {
+        return;
+    }
+    ordered.push(process);
+    if let Some(descendants) = children.get(&pid) {
+        for child in descendants {
+            append_tree_node(child, children, visited, ordered);
+        }
     }
 }
 
@@ -1151,6 +1323,43 @@ mod tests {
         app.selected_process = 5;
         app.move_selection(1);
         assert_eq!(app.selected_process, 2);
+    }
+
+    #[test]
+    fn selection_is_bounded_by_visible_process_limit() {
+        let mut app = App::new();
+        app.config.max_processes = 2;
+        app.system_state.processes = vec![
+            process("1", "one", 1.0, 1, 1),
+            process("2", "two", 2.0, 1, 1),
+            process("3", "three", 3.0, 1, 1),
+        ];
+
+        app.move_selection(10);
+
+        assert_eq!(app.selected_process, 1);
+    }
+
+    #[test]
+    fn tree_view_orders_parent_before_children() {
+        let mut app = App::new();
+        let mut root = process("1", "root", 1.0, 10, 1);
+        root.parent_pid = 0;
+        let mut child = process("2", "child", 2.0, 10, 1);
+        child.parent_pid = 1;
+        let mut grandchild = process("3", "grandchild", 3.0, 10, 1);
+        grandchild.parent_pid = 2;
+        app.system_state.processes = vec![grandchild, root, child];
+        app.toggle_tree_view();
+
+        let names: Vec<_> = app
+            .visible_processes()
+            .iter()
+            .map(|process| process.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["root", "child", "grandchild"]);
+        assert_eq!(app.tree_prefix(app.visible_processes()[1]), "|- ");
+        assert_eq!(app.tree_prefix(app.visible_processes()[2]), "  |- ");
     }
 
     #[test]
@@ -1438,9 +1647,11 @@ mod tests {
 
         app.config.theme = Theme::Midnight;
         let palette = app.config.theme.palette();
-        assert_eq!(palette.accent, ratatui::style::Color::LightCyan);
-        assert_eq!(palette.footer, ratatui::style::Color::LightRed);
+        assert_eq!(palette.accent, ratatui::style::Color::Rgb(125, 207, 255));
+        assert_eq!(palette.footer, ratatui::style::Color::Rgb(224, 175, 104));
         assert_eq!(Theme::from_name("midnight"), Some(Theme::Midnight));
+        assert_eq!(Theme::from_name("nord"), Some(Theme::Nord));
+        assert_eq!(Theme::from_name("catppuccin"), Some(Theme::Catppuccin));
 
         app.set_visible_columns(vec![DisplayColumn::Pid, DisplayColumn::Name]);
         assert_eq!(

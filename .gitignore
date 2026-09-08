@@ -1,3 +1,32 @@
 /target
 /.release-stage
 /dist/releases
+
+# Local build and packaging output
+*.rs.bk
+*.tmp
+*.log
+
+# OS and editor metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Coverage and profiling output
+coverage/
+lcov.info
+*.profraw
+*.profdata

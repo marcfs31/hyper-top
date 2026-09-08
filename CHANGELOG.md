@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.9.3] - 2026-09-06
+### Fixed
+- Mouse-wheel scrolling now scrolls process details when the Details panel is focused.
+- Details scrolling is clamped to the available content so it cannot overshoot into blank space.
+
+## [0.9.2] - 2026-09-06
+### Added
+- Scrollable process details with arrow keys, `j`/`k`, PageUp/PageDown, and Home/End when the Details panel is focused.
+
+## [0.9.1] - 2026-09-06
+### Fixed
+- Aligned the process number header with the right-aligned process numbers in the PID column.
+- Expanded `.gitignore` for Rust build output, packaging artifacts, editor metadata, local secrets, and coverage files.
+
+## [0.9.0] - 2026-09-06
+### Added
+- Five modern color palettes: Tokyo Night, Catppuccin, Nord, Dracula, and Gruvbox.
+
+### Changed
+- Refined the existing Default, Solarized, and Midnight palettes with improved contrast and accent colors.
+- The `T` shortcut now cycles through all eight themes.
+
+## [0.8.2] - 2026-09-06
+### Changed
+- Added a clearly separated process number beside each PID in the Processes table.
+- Bumped the package version to `0.8.2`.
+
+## [0.8.1] - 2026-09-06
+### Added
+- Hierarchical process tree mode toggled with `e`, with parent-first navigation and visual indentation.
+
+### Fixed
+- Replaced ambiguous unavailable parent UID values with `N/A`.
+- Help dialog navigation now visibly scrolls with Up/Down, PageUp/PageDown, Home, and End.
+
 ## [0.8.0] - 2026-09-06
 ### Added
 - Dedicated input handling module with focused shortcut and interaction tests.

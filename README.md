@@ -99,6 +99,10 @@ visible_columns = ["pid", "name", "cpu", "memory", "threads"]
 - ?: help
 - q: quit
 
+Themes include refined Default, Solarized, and Midnight palettes plus modern
+Tokyo Night, Catppuccin, Nord, Dracula, and Gruvbox palettes. Select one
+persistently with `--theme`, for example `hyper-top --theme nord`.
+
 ## Install as a terminal app
 
 The project is ready for local installation via Cargo:
@@ -142,6 +146,21 @@ Invoke-WebRequest "https://github.com/marcfs31/hyper-top/releases/download/v0.7.
 Expand-Archive -Path "hyper-top-windows-x86_64.zip" -DestinationPath ".\hyper-top" -Force
 .\hyper-top\hyper-top.exe --help
 ```
+
+The macOS archive is currently unsigned and not notarized. macOS Gatekeeper may
+show a malware verification warning for downloaded files. Verify the download
+source, then either right-click the launcher and choose **Open**, or approve it
+in **System Settings > Privacy & Security**. To run it from Terminal:
+
+```bash
+cd hyper-top
+chmod +x hyper-top.command hyper-top
+./hyper-top.command
+```
+
+The release workflow can be extended with Apple Developer ID signing and
+notarization once the repository has Apple signing credentials. Never commit
+those credentials to the repository.
 
 Bundle generation is handled by:
 
