@@ -658,6 +658,15 @@ impl StorageMount {
     }
 }
 
+#[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
+pub struct NetworkInterface {
+    pub name: String,
+    pub rx_bytes_per_sec: f64,
+    pub tx_bytes_per_sec: f64,
+    pub total_rx_bytes: u64,
+    pub total_tx_bytes: u64,
+}
+
 pub struct SystemState {
     pub cpu_usage: f32,
     pub cpu_count: usize,
@@ -672,6 +681,7 @@ pub struct SystemState {
     pub storage_available_gb: f64,
     pub storage_mount: String,
     pub storage_mounts: Vec<StorageMount>,
+    pub network_interfaces: Vec<NetworkInterface>,
     pub uptime: Duration,
     pub load_average: [f64; 3],
     pub running_processes: usize,
@@ -701,6 +711,34 @@ impl SystemState {
         } else {
             self.storage_mounts.clone()
         }
+    }
+
+    pub fn network_totals(&self) -> (f64, f64) {
+        let rx = self
+            .network_interfaces
+            .iter()
+            .map(|iface| iface.rx_bytes_per_sec)
+            .sum();
+        let tx = self
+            .network_interfaces
+            .iter()
+            .map(|iface| iface.tx_bytes_per_sec)
+            .sum();
+        (rx, tx)
+    }
+
+    pub fn network_total_bytes(&self) -> (u64, u64) {
+        let rx = self
+            .network_interfaces
+            .iter()
+            .map(|iface| iface.total_rx_bytes)
+            .sum();
+        let tx = self
+            .network_interfaces
+            .iter()
+            .map(|iface| iface.total_tx_bytes)
+            .sum();
+        (rx, tx)
     }
 }
 
@@ -745,6 +783,7 @@ impl App {
                 storage_available_gb: 0.0,
                 storage_mount: "/".to_string(),
                 storage_mounts: Vec::new(),
+                network_interfaces: Vec::new(),
                 uptime: Duration::ZERO,
                 load_average: [0.0; 3],
                 running_processes: 0,
@@ -1200,8 +1239,8 @@ fn append_tree_node<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        AlertThresholds, App, AppConfig, DisplayColumn, FilterPreset, FocusedBlock, ProcessItem,
-        SortMode, SortProfile, SystemState, Theme,
+        AlertThresholds, App, AppConfig, DisplayColumn, FilterPreset, FocusedBlock,
+        NetworkInterface, ProcessItem, SortMode, SortProfile, SystemState, Theme,
     };
     use std::{
         fs,
@@ -1266,6 +1305,7 @@ mod tests {
             storage_available_gb: 25.0,
             storage_mount: "/".to_string(),
             storage_mounts: Vec::new(),
+            network_interfaces: Vec::new(),
             uptime: std::time::Duration::ZERO,
             load_average: [0.0; 3],
             running_processes: 0,
@@ -1276,6 +1316,52 @@ mod tests {
         };
 
         assert_eq!(state.storage_percent(), 75);
+    }
+
+    #[test]
+    fn network_totals_sum_rates_and_totals_across_all_interfaces() {
+        let mut state = SystemState {
+            cpu_usage: 0.0,
+            cpu_count: 0,
+            cpu_frequency_mhz: 0,
+            core_usage: Vec::new(),
+            ram_used_gb: 0.0,
+            ram_total_gb: 0.0,
+            swap_used_gb: 0.0,
+            swap_total_gb: 0.0,
+            storage_total_gb: 0.0,
+            storage_used_gb: 0.0,
+            storage_available_gb: 0.0,
+            storage_mount: "/".to_string(),
+            storage_mounts: Vec::new(),
+            network_interfaces: Vec::new(),
+            uptime: std::time::Duration::ZERO,
+            load_average: [0.0; 3],
+            running_processes: 0,
+            total_threads: 0,
+            processes: Vec::new(),
+            refreshed_at: std::time::Instant::now(),
+            message: String::new(),
+        };
+        state.network_interfaces = vec![
+            NetworkInterface {
+                name: "en0".to_string(),
+                rx_bytes_per_sec: 1_000.0,
+                tx_bytes_per_sec: 200.0,
+                total_rx_bytes: 10_000,
+                total_tx_bytes: 2_000,
+            },
+            NetworkInterface {
+                name: "utun4".to_string(),
+                rx_bytes_per_sec: 50.0,
+                tx_bytes_per_sec: 25.0,
+                total_rx_bytes: 500,
+                total_tx_bytes: 250,
+            },
+        ];
+
+        assert_eq!(state.network_totals(), (1_050.0, 225.0));
+        assert_eq!(state.network_total_bytes(), (10_500, 2_250));
     }
 
     #[test]

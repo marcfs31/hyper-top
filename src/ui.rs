@@ -148,10 +148,11 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chart_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
         ])
         .split(chunks[2]);
     let load_chart = Paragraph::new(vec![
@@ -241,6 +242,23 @@ pub fn draw(f: &mut Frame, app: &App) {
     .style(Style::default().fg(palette.text));
     if !app.expanded_process_view {
         f.render_widget(storage_chart, chart_chunks[3]);
+    }
+
+    let (network_rx, network_tx) = app.system_state.network_totals();
+    let (network_total_rx, network_total_tx) = app.system_state.network_total_bytes();
+    let network_chart = Paragraph::new(vec![
+        Line::from(format!("\u{2193} {}", format_rate(network_rx))),
+        Line::from(format!("\u{2191} {}", format_rate(network_tx))),
+        Line::from(format!(
+            "{:.1} GB total",
+            (network_total_rx + network_total_tx) as f64 / 1_073_741_824.0
+        )),
+    ])
+    .wrap(Wrap { trim: true })
+    .block(Block::default().borders(Borders::ALL).title(" Network "))
+    .style(Style::default().fg(palette.text));
+    if !app.expanded_process_view {
+        f.render_widget(network_chart, chart_chunks[4]);
     }
 
     let info = Layout::default()
@@ -487,6 +505,7 @@ pub fn draw(f: &mut Frame, app: &App) {
             table_chunks[1],
             app.selected_process_info(),
             &storage_mounts,
+            &app.system_state.network_interfaces,
             (app.system_state.ram_total_gb * 1024.0) as u64,
             detail_title,
             app.focused_block == FocusedBlock::ProcessDetails,
@@ -585,6 +604,7 @@ fn render_process_details(
     area: Rect,
     process: Option<&crate::app::ProcessItem>,
     storage_mounts: &[crate::app::StorageMount],
+    network_interfaces: &[crate::app::NetworkInterface],
     total_memory_mb: u64,
     title: &str,
     focused: bool,
@@ -681,6 +701,21 @@ fn render_process_details(
                 mount.total_gb
             )));
         }
+        if !network_interfaces.is_empty() {
+            content.push(Line::from(""));
+            content.push(Line::from(vec![
+                Span::styled("Network: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw("interfaces"),
+            ]));
+            for interface in network_interfaces.iter().take(4) {
+                content.push(Line::from(format!(
+                    "  {}  \u{2193} {}  \u{2191} {}",
+                    interface.name,
+                    format_rate(interface.rx_bytes_per_sec),
+                    format_rate(interface.tx_bytes_per_sec)
+                )));
+            }
+        }
         content.push(Line::from(""));
         content.push(Line::from(format!(
             "System: CPU {:.1}% | RAM {:.1}% | load {:.2}",
@@ -713,6 +748,21 @@ fn format_usage_bar(percent: u16, width: usize) -> String {
     let bar = "█".repeat(filled).to_string();
     let blank = "░".repeat(width.saturating_sub(filled));
     format!("[{}{}]", bar, blank)
+}
+
+fn format_rate(bytes_per_sec: f64) -> String {
+    let units = ["B/s", "KB/s", "MB/s", "GB/s", "TB/s"];
+    let mut value = bytes_per_sec.max(0.0);
+    let mut unit_index = 0;
+    while value >= 1024.0 && unit_index < units.len() - 1 {
+        value /= 1024.0;
+        unit_index += 1;
+    }
+    if unit_index == 0 {
+        format!("{:.0} {}", value, units[unit_index])
+    } else {
+        format!("{:.1} {}", value, units[unit_index])
+    }
 }
 
 fn column_min_width(column: DisplayColumn) -> u16 {
@@ -945,5 +995,14 @@ mod tests {
         assert_eq!(fit_cell("abcdefgh", 6), "abc...");
         assert_eq!(fit_cell("abcdefgh", 3), "abc");
         assert_eq!(fit_cell("abc", 6), "abc");
+    }
+
+    #[test]
+    fn format_rate_adapts_units_from_bytes_to_gigabytes_per_second() {
+        assert_eq!(format_rate(0.0), "0 B/s");
+        assert_eq!(format_rate(512.0), "512 B/s");
+        assert_eq!(format_rate(2_048.0), "2.0 KB/s");
+        assert_eq!(format_rate(5.5 * 1024.0 * 1024.0), "5.5 MB/s");
+        assert_eq!(format_rate(1.5 * 1024.0 * 1024.0 * 1024.0), "1.5 GB/s");
     }
 }
