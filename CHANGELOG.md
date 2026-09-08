@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Semantic Versioning (SemVer), with the project version kept in sync with `Cargo.toml`.
 
+## [0.10.0] - 2026-09-08
+### Added
+- Live network throughput monitoring: an aggregate upload/download rate panel in the dashboard's Charts row, plus combined cumulative data total since launch.
+- Per-interface network breakdown (name, download rate, upload rate) in the Process Details panel.
+
 ## [0.9.3] - 2026-09-06
 ### Fixed
 - Mouse-wheel scrolling now scrolls process details when the Details panel is focused.

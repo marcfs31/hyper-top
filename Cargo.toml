@@ -1,6 +1,6 @@
 [package]
 name = "hyper-top"
-version = "0.9.3"
+version = "0.10.0"
 description = "Terminal-based system monitor and process dashboard"
 license = "MIT"
 edition = "2021"

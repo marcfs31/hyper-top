@@ -22,6 +22,8 @@ pub fn spawn_telemetry_engine(
 
         let mut message = "Telemetry online".to_string();
         let users = Users::new_with_refreshed_list();
+        let mut networks = sysinfo::Networks::new_with_refreshed_list();
+        let mut last_network_sample = Instant::now();
         loop {
             tokio::time::sleep(refresh_interval).await;
             while let Ok(command) = commands.try_recv() {
@@ -85,6 +87,23 @@ pub fn spawn_telemetry_engine(
             let storage_mount = storage_disk
                 .map(|disk| disk.mount.clone())
                 .unwrap_or_else(|| "/".to_string());
+
+            networks.refresh_list();
+            let network_now = Instant::now();
+            let network_elapsed = network_now.duration_since(last_network_sample);
+            last_network_sample = network_now;
+
+            let raw_network_interfaces: Vec<crate::app::NetworkInterface> = networks
+                .iter()
+                .map(|(name, data)| crate::app::NetworkInterface {
+                    name: name.clone(),
+                    rx_bytes_per_sec: bytes_per_second(data.received(), network_elapsed),
+                    tx_bytes_per_sec: bytes_per_second(data.transmitted(), network_elapsed),
+                    total_rx_bytes: data.total_received(),
+                    total_tx_bytes: data.total_transmitted(),
+                })
+                .collect();
+            let network_interfaces = select_network_interfaces(raw_network_interfaces);
 
             let mut procs: Vec<ProcessItem> = sys
                 .processes()
@@ -158,6 +177,7 @@ pub fn spawn_telemetry_engine(
                 storage_available_gb: storage_available,
                 storage_mount,
                 storage_mounts,
+                network_interfaces,
                 uptime: Duration::from_secs(System::uptime()),
                 load_average: [load.one, load.five, load.fifteen],
                 running_processes: sys.processes().len(),
@@ -172,6 +192,43 @@ pub fn spawn_telemetry_engine(
             }
         }
     });
+}
+
+fn bytes_per_second(delta_bytes: u64, elapsed: Duration) -> f64 {
+    let seconds = elapsed.as_secs_f64();
+    if seconds <= 0.0 {
+        0.0
+    } else {
+        delta_bytes as f64 / seconds
+    }
+}
+
+fn is_loopback_interface(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if lower == "lo" || lower.contains("loopback") {
+        return true;
+    }
+    match lower.strip_prefix("lo") {
+        Some(rest) if !rest.is_empty() => rest.chars().all(|c| c.is_ascii_digit()),
+        _ => false,
+    }
+}
+
+fn select_network_interfaces(
+    mut interfaces: Vec<crate::app::NetworkInterface>,
+) -> Vec<crate::app::NetworkInterface> {
+    interfaces.retain(|iface| {
+        !is_loopback_interface(&iface.name)
+            && (iface.total_rx_bytes > 0 || iface.total_tx_bytes > 0)
+    });
+    interfaces.sort_by(|a, b| {
+        let a_rate = a.rx_bytes_per_sec + a.tx_bytes_per_sec;
+        let b_rate = b.rx_bytes_per_sec + b.tx_bytes_per_sec;
+        b_rate
+            .partial_cmp(&a_rate)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    interfaces
 }
 
 fn format_process_status(status: ProcessStatus) -> String {
@@ -192,7 +249,11 @@ fn format_process_status(status: ProcessStatus) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::format_process_status;
+    use super::{
+        bytes_per_second, format_process_status, is_loopback_interface, select_network_interfaces,
+    };
+    use crate::app::NetworkInterface;
+    use std::time::Duration;
     use sysinfo::ProcessStatus;
 
     #[test]
@@ -207,5 +268,61 @@ mod tests {
         assert_eq!(format_process_status(ProcessStatus::Wakekill), "wakekill");
         assert_eq!(format_process_status(ProcessStatus::Waking), "waking");
         assert_eq!(format_process_status(ProcessStatus::Parked), "parked");
+    }
+
+    #[test]
+    fn bytes_per_second_returns_zero_for_zero_elapsed_time() {
+        assert_eq!(bytes_per_second(1_000, Duration::ZERO), 0.0);
+    }
+
+    #[test]
+    fn bytes_per_second_divides_delta_by_elapsed_seconds() {
+        assert_eq!(bytes_per_second(2_000, Duration::from_secs(2)), 1_000.0);
+        assert_eq!(bytes_per_second(1_000, Duration::from_millis(500)), 2_000.0);
+    }
+
+    #[test]
+    fn is_loopback_interface_matches_common_platform_names_only() {
+        assert!(is_loopback_interface("lo"));
+        assert!(is_loopback_interface("lo0"));
+        assert!(is_loopback_interface("LO0"));
+        assert!(is_loopback_interface("Loopback Pseudo-Interface 1"));
+
+        assert!(!is_loopback_interface("en0"));
+        assert!(!is_loopback_interface("eth0"));
+        assert!(!is_loopback_interface("utun4"));
+        assert!(!is_loopback_interface("lockdown0"));
+        assert!(!is_loopback_interface("local0"));
+    }
+
+    fn interface(
+        name: &str,
+        rx_rate: f64,
+        tx_rate: f64,
+        total_rx: u64,
+        total_tx: u64,
+    ) -> NetworkInterface {
+        NetworkInterface {
+            name: name.to_string(),
+            rx_bytes_per_sec: rx_rate,
+            tx_bytes_per_sec: tx_rate,
+            total_rx_bytes: total_rx,
+            total_tx_bytes: total_tx,
+        }
+    }
+
+    #[test]
+    fn select_network_interfaces_excludes_loopback_and_idle_interfaces_and_sorts_by_rate() {
+        let interfaces = vec![
+            interface("lo0", 0.0, 0.0, 500, 500),
+            interface("en5", 0.0, 0.0, 0, 0),
+            interface("en0", 100.0, 50.0, 10_000, 5_000),
+            interface("utun4", 5_000.0, 1_000.0, 20_000, 2_000),
+        ];
+
+        let selected = select_network_interfaces(interfaces);
+        let names: Vec<&str> = selected.iter().map(|iface| iface.name.as_str()).collect();
+
+        assert_eq!(names, vec!["utun4", "en0"]);
     }
 }
