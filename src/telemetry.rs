@@ -15,7 +15,7 @@ pub fn spawn_telemetry_engine(
 ) {
     tokio::spawn(async move {
         let mut sys = System::new_with_specifics(
-            RefreshKind::new()
+            RefreshKind::nothing()
                 .with_cpu(CpuRefreshKind::everything())
                 .with_processes(ProcessRefreshKind::everything()),
         );
@@ -44,12 +44,12 @@ pub fn spawn_telemetry_engine(
                 }
             }
 
-            sys.refresh_cpu();
+            sys.refresh_cpu_all();
             sys.refresh_memory();
-            sys.refresh_processes();
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
             let disks = sysinfo::Disks::new_with_refreshed_list();
-            let global_cpu = sys.global_cpu_info().cpu_usage();
+            let global_cpu = sys.global_cpu_usage();
             let cpu_count = sys.cpus().len();
             let core_usage = sys
                 .cpus()
@@ -88,7 +88,7 @@ pub fn spawn_telemetry_engine(
                 .map(|disk| disk.mount.clone())
                 .unwrap_or_else(|| "/".to_string());
 
-            networks.refresh_list();
+            networks.refresh(true);
             let network_now = Instant::now();
             let network_elapsed = network_now.duration_since(last_network_sample);
             last_network_sample = network_now;
@@ -109,9 +109,14 @@ pub fn spawn_telemetry_engine(
                 .processes()
                 .iter()
                 .map(|(pid, proc)| {
-                    let command = proc.cmd().join(" ");
+                    let command = proc
+                        .cmd()
+                        .iter()
+                        .map(|arg| arg.to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     let command = if command.is_empty() {
-                        proc.name().to_string()
+                        proc.name().to_string_lossy().to_string()
                     } else {
                         command
                     };
@@ -127,7 +132,7 @@ pub fn spawn_telemetry_engine(
                         .unwrap_or_else(|| "?".to_string());
                     ProcessItem {
                         pid: pid.to_string(),
-                        name: proc.name().to_string(),
+                        name: proc.name().to_string_lossy().to_string(),
                         user: proc
                             .user_id()
                             .and_then(|user_id| users.get_user_by_id(user_id))
